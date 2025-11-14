@@ -1,0 +1,73 @@
+{
+  "dataRoles": [
+    {
+      "displayName": "Data",
+      "name": "data",
+      "kind": "Grouping"
+    },
+    {
+      "displayName": "Organization",
+      "name": "organization",
+      "kind": "Grouping"
+    }
+  ],
+  "dataViewMappings": [
+    {
+      "table": {
+        "rows": {
+          "for": {
+            "in": "data"
+          },
+          "dataReductionAlgorithm": {
+            "top": {}
+          }
+        },
+        "columns": {
+          "select": [
+            {
+              "bind": {
+                "to": "organization"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "objects": {
+    "passwordSettings": {
+      "displayName": "Password Settings",
+      "properties": {
+        "password": {
+          "displayName": "Password",
+          "type": {
+            "text": true
+          }
+        },
+        "showPassword": {
+          "displayName": "Show Password",
+          "type": {
+            "bool": true
+          }
+        }
+      }
+    },
+    "filterSettings": {
+      "displayName": "Filter Settings",
+      "properties": {
+        "organizationMapping": {
+          "displayName": "Organization Password Mapping",
+          "type": {
+            "text": true
+          },
+          "description": "JSON mapping: {\"password1\":\"FAO\",\"password2\":\"UNICEF\"}"
+        }
+      }
+    }
+  },
+  "supportsEmptyDataView": true,
+  "supportsMultiVisualSelection": false,
+  "supportsSynchronizingFilterState": true,
+  "privileges": []
+}
+

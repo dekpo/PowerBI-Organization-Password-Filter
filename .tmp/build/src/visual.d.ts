@@ -1,0 +1,32 @@
+import powerbi from "powerbi-visuals-api";
+import "./../style/visual.less";
+import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
+import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
+import VisualObjectInstanceEnumeration = powerbi.VisualObjectInstanceEnumeration;
+import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
+export declare class OrganizationPasswordFilter implements powerbi.extensibility.visual.IVisual {
+    private host;
+    private element;
+    private formattingSettings;
+    private formattingSettingsService;
+    private passwordInput;
+    private submitButton;
+    private messageDiv;
+    private dataTable;
+    private currentOrganization;
+    private allData;
+    private organizationColumn;
+    private organizationTableName;
+    private organizationColumnQueryName;
+    constructor(options?: VisualConstructorOptions);
+    update(options: VisualUpdateOptions): void;
+    private handlePasswordSubmit;
+    private getDefaultPasswordMapping;
+    private filterAndDisplayData;
+    private displayData;
+    private applyFilter;
+    private clearFilter;
+    private showMessage;
+    getFormattingModel(): powerbi.visuals.FormattingModel;
+    enumerateObjectInstances(_options: EnumerateVisualObjectInstancesOptions): VisualObjectInstanceEnumeration;
+}

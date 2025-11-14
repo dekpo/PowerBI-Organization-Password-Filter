@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.pbiviz
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
