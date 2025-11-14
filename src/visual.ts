@@ -12,7 +12,19 @@ import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInst
 import VisualObjectInstanceEnumeration = powerbi.VisualObjectInstanceEnumeration;
 import DataView = powerbi.DataView;
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
-import FilterAction = powerbi.FilterAction;
+import ISelectionId = powerbi.visuals.ISelectionId;
+
+// Interface for data points with identity and organization
+interface DataPoint {
+    identity: ISelectionId;
+    org: string;
+    [key: string]: any; // Allow other properties
+}
+
+// ViewModel to hold data points
+interface ViewModel {
+    dataPoints: DataPoint[];
+}
 
 export class OrganizationPasswordFilter implements powerbi.extensibility.visual.IVisual {
     private host: IVisualHost;
@@ -22,12 +34,10 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     private passwordInput: HTMLInputElement;
     private submitButton: HTMLButtonElement;
     private messageDiv: HTMLDivElement;
-    private dataTable: HTMLTableElement;
     private currentOrganization: string | null = null;
     private allData: any[] = [];
-    private organizationColumn: string = "Organization";
-    private organizationTableName: string = "";
-    private organizationColumnQueryName: string = "";
+    private viewModel: ViewModel = { dataPoints: [] };
+    private currentDataView: DataView | null = null;
 
     constructor(options?: VisualConstructorOptions) {
         if (!options) {
@@ -45,38 +55,23 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         const passwordSection = document.createElement("div");
         passwordSection.className = "passwordSection";
         
-        const passwordLabel = document.createElement("label");
-        passwordLabel.textContent = "Enter Password:";
-        passwordLabel.className = "passwordLabel";
-        
         this.passwordInput = document.createElement("input");
         this.passwordInput.type = "password";
         this.passwordInput.className = "passwordInput";
-        this.passwordInput.placeholder = "Enter password to filter by organization";
+        this.passwordInput.placeholder = "Enter password";
         
         this.submitButton = document.createElement("button");
-        this.submitButton.textContent = "Filter";
+        this.submitButton.textContent = "Enter";
         this.submitButton.className = "submitButton";
         
         this.messageDiv = document.createElement("div");
         this.messageDiv.className = "messageDiv";
         
-        passwordSection.appendChild(passwordLabel);
         passwordSection.appendChild(this.passwordInput);
         passwordSection.appendChild(this.submitButton);
         passwordSection.appendChild(this.messageDiv);
         
-        // Create data table section
-        const tableSection = document.createElement("div");
-        tableSection.className = "tableSection";
-        
-        this.dataTable = document.createElement("table");
-        this.dataTable.className = "dataTable";
-        
-        tableSection.appendChild(this.dataTable);
-        
         container.appendChild(passwordSection);
-        container.appendChild(tableSection);
         
         this.element.appendChild(container);
         
@@ -94,23 +89,28 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         
         const dataView: DataView = options.dataViews[0];
         if (!dataView || !dataView.table) {
-            this.showMessage("No data available", "error");
+            // Block all data access if no data view
+            this.blockAllData();
             return;
         }
+
+        // Store dataView for filter operations
+        this.currentDataView = dataView;
 
         // Extract data from dataView
         const table = dataView.table;
         const rows = table.rows;
         
         if (!rows || rows.length === 0) {
-            this.showMessage("No data rows available", "error");
+            // Block all data access if no rows
+            this.blockAllData();
             return;
         }
 
         // Get column names
         const columns = table.columns.map((col: any) => col.displayName || col.queryName);
         
-        // Store all data
+        // Store all data and build dataPoints with identities
         this.allData = rows.map((row: any) => {
             const rowData: any = {};
             columns.forEach((col: string, index: number) => {
@@ -119,78 +119,66 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             return rowData;
         });
 
-        // Find organization column and store metadata
+        // Find organization column index first
         const orgColIndex = table.columns.findIndex((col: any) => {
             const colName = (col.displayName || col.queryName || "").toLowerCase();
             return colName.includes("organization") || colName.includes("org");
         });
-        
-        if (orgColIndex >= 0) {
-            const orgCol = table.columns[orgColIndex];
-            this.organizationColumn = orgCol.displayName || orgCol.queryName || "Organization";
-            
-            // Get the queryName - this is the most reliable identifier
-            let queryName = orgCol.queryName || "";
-            
-            // Try to get from DataViewMetadata first (most reliable)
-            if (dataView.metadata && dataView.metadata.columns) {
-                const metadataCol = dataView.metadata.columns.find((c: any) => {
-                    const cQueryName = c.queryName || "";
-                    const cDisplayName = c.displayName || "";
-                    return cQueryName === queryName || 
-                           cDisplayName === this.organizationColumn ||
-                           cQueryName.toLowerCase().includes("organization") ||
-                           cDisplayName.toLowerCase().includes("organization");
-                });
-                
-                if (metadataCol && metadataCol.queryName) {
-                    queryName = metadataCol.queryName;
-                }
-            }
-            
-            // Extract table name and column name from queryName
-            // Format can be: "TableName.ColumnName" or just "ColumnName"
-            if (queryName && queryName.includes(".")) {
-                const parts = queryName.split(".");
-                this.organizationTableName = parts[0];
-                this.organizationColumnQueryName = queryName; // Full qualified name
-            } else {
-                // No dot found - try to get table name from other columns or metadata
-                // Check if any column has a table name
-                const firstColWithTable = table.columns.find((col: any) => 
-                    col.queryName && col.queryName.includes(".")
-                );
-                
-                if (firstColWithTable && firstColWithTable.queryName) {
-                    const tableName = firstColWithTable.queryName.split(".")[0];
-                    this.organizationTableName = tableName;
-                    this.organizationColumnQueryName = `${tableName}.${queryName || this.organizationColumn}`;
-                } else {
-                    // Last resort: use queryName as both table and column
-                    // Power BI might accept this format
-                    this.organizationTableName = queryName || this.organizationColumn;
-                    this.organizationColumnQueryName = queryName || this.organizationColumn;
-                }
-            }
-        }
 
-        // Apply current filter if exists
-        if (this.currentOrganization) {
-            this.filterAndDisplayData(this.currentOrganization);
+        // Build dataPoints with identities for selection manager
+        this.viewModel.dataPoints = rows.map((row: any, index: number) => {
+            // Get organization value
+            const orgValue = orgColIndex >= 0 ? String(row[orgColIndex] || "") : "";
+            
+            // Create selection ID using selectionIdBuilder
+            // For table data, we can use withTable or create based on row index
+            const selectionIdBuilder = this.host.createSelectionIdBuilder();
+            let identity: ISelectionId;
+            
+            // Try to use table identity if available (Power BI provides this)
+            if (table.identity && table.identity[index]) {
+                // Convert CustomVisualOpaqueIdentity to ISelectionId if needed
+                // In Power BI, table.identity can be used directly with selection manager
+                identity = table.identity[index] as any as ISelectionId;
+            } else {
+                // Build identity using withTable - this creates an identity for a table row
+                // We use the table metadata and row index
+                if (orgColIndex >= 0 && table.columns[orgColIndex]) {
+                    // Use withTable to create identity based on table structure
+                    selectionIdBuilder.withTable(table, index);
+                    identity = selectionIdBuilder.createSelectionId();
+                } else {
+                    // Fallback: create a basic selection ID
+                    identity = selectionIdBuilder.createSelectionId();
+                }
+            }
+            
+            return {
+                identity: identity,
+                org: orgValue,
+                ...this.allData[index]
+            };
+        });
+
+        // CRITICAL: Block all data access if no password has been entered
+        if (!this.currentOrganization) {
+            this.blockAllData();
         } else {
-            this.displayData(this.allData, columns);
+            // Apply filter for the current organization
+            this.applyFilter(this.currentOrganization);
         }
     }
 
     private handlePasswordSubmit() {
         const password = this.passwordInput.value.trim();
         
+        console.log("[PasswordFilter] Password submitted:", password);
+        
         if (!password) {
             this.showMessage("Please enter a password", "error");
             this.currentOrganization = null;
-            this.displayData(this.allData, Object.keys(this.allData[0] || {}));
-            // Clear global filter when password is empty
-            this.clearFilter();
+            // Block all data access when password is empty
+            this.blockAllData();
             return;
         }
 
@@ -202,27 +190,31 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         try {
             passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
         } catch (e) {
+            console.warn("[PasswordFilter] Failed to parse mapping JSON, using default:", e);
             passwordMapping = this.getDefaultPasswordMapping();
         }
+
+        console.log("[PasswordFilter] Password mapping:", passwordMapping);
 
         // Check password and get organization
         const organization = passwordMapping[password];
         
         if (!organization) {
             this.showMessage("Invalid password", "error");
+            console.warn("[PasswordFilter] Invalid password:", password);
             this.currentOrganization = null;
-            this.displayData(this.allData, Object.keys(this.allData[0] || {}));
-            // Clear global filter
-            this.clearFilter();
+            // Block all data access when password is invalid
+            this.blockAllData();
             return;
         }
 
+        console.log("[PasswordFilter] Password valid, organization:", organization);
+
         // Apply filter
         this.currentOrganization = organization;
-        this.showMessage(`Filtered by: ${organization}`, "success");
-        this.filterAndDisplayData(organization);
+        this.showMessage("Access granted", "success");
         
-        // Apply filter to Power BI globally
+        // Apply filter to Power BI globally - only show data for this organization
         this.applyFilter(organization);
     }
 
@@ -236,106 +228,127 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         };
     }
 
-    private filterAndDisplayData(organization: string) {
-        const filteredData = this.allData.filter(row => 
-            String(row[this.organizationColumn]).toUpperCase() === organization.toUpperCase()
-        );
-        
-        const columns = Object.keys(this.allData[0] || {});
-        this.displayData(filteredData, columns);
-    }
+    private blockAllData() {
+        try {
+            console.log("[PasswordFilter] Blocking all data access - no valid password");
+            
+            if (!this.currentDataView || !this.currentDataView.table) {
+                // If no data view, try to apply a blocking filter anyway
+                // This will prevent any data from showing
+                const blockingFilter: any = {
+                    $schema: "http://powerbi.com/product/schema#basic",
+                    target: {},
+                    operator: "None"
+                };
+                this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
+                return;
+            }
 
-    private displayData(data: any[], columns: string[]) {
-        // Clear existing table
-        while (this.dataTable.firstChild) {
-            this.dataTable.removeChild(this.dataTable.firstChild);
-        }
-        
-        if (data.length === 0) {
-            const noDataRow = this.dataTable.insertRow();
-            const noDataCell = noDataRow.insertCell();
-            noDataCell.colSpan = columns.length;
-            noDataCell.textContent = "No data to display";
-            noDataCell.className = "noDataCell";
-            return;
-        }
-
-        // Create header row
-        const headerRow = this.dataTable.createTHead().insertRow();
-        columns.forEach((col: string) => {
-            const th = document.createElement("th");
-            th.textContent = col;
-            headerRow.appendChild(th);
-        });
-
-        // Create body
-        const tbody = this.dataTable.createTBody();
-        data.forEach((row: any) => {
-            const tr = tbody.insertRow();
-            columns.forEach((col: string) => {
-                const td = tr.insertCell();
-                const value = row[col];
-                td.textContent = value !== null && value !== undefined ? String(value) : "";
+            // Find organization column
+            const table = this.currentDataView.table;
+            const orgColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName.includes("organization") || colName.includes("org");
             });
-        });
+
+            if (orgColIndex < 0) {
+                // If no organization column, apply a blocking filter
+                const blockingFilter: any = {
+                    $schema: "http://powerbi.com/product/schema#basic",
+                    target: {},
+                    operator: "None"
+                };
+                this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
+                return;
+            }
+
+            const orgColumn = table.columns[orgColIndex];
+            const queryName = orgColumn.queryName || orgColumn.displayName;
+            const tableName = queryName.split('.')[0] || queryName;
+            const columnName = queryName.split('.').pop() || orgColumn.displayName;
+            
+            // Apply a filter that matches NO organizations (empty array)
+            // This will block all data from being displayed
+            const blockingFilter: any = {
+                $schema: "http://powerbi.com/product/schema#basic",
+                target: {
+                    table: tableName,
+                    column: columnName
+                },
+                operator: "In",
+                values: [] // Empty array means no data matches
+            };
+
+            console.log("[PasswordFilter] Applying blocking filter:", JSON.stringify(blockingFilter, null, 2));
+            this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
+            
+        } catch (error: any) {
+            console.error("[PasswordFilter] Error blocking data:", error);
+        }
     }
 
     private applyFilter(organization: string) {
         try {
-            if (!this.organizationTableName || !this.organizationColumnQueryName) {
-                this.showMessage("Cannot apply filter - metadata not available", "error");
+            if (!this.currentDataView || !this.currentDataView.table) {
+                this.showMessage("No data view available for filtering", "error");
+                console.error("[PasswordFilter] No data view available");
                 return;
             }
 
-            // Create a basic filter using Power BI's filter interface
-            // This filter will affect all visuals in the dashboard that use the same data source
-            const filter: any = {
-                $schema: "https://powerbi.com/product/schema#basic",
+            // Find organization column
+            const table = this.currentDataView.table;
+            const orgColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName.includes("organization") || colName.includes("org");
+            });
+
+            if (orgColIndex < 0) {
+                this.showMessage("Organization column not found", "error");
+                console.error("[PasswordFilter] Organization column not found in columns:", table.columns.map((c: any) => c.displayName || c.queryName));
+                return;
+            }
+
+            const orgColumn = table.columns[orgColIndex];
+            
+            // Get the table name from metadata or use queryName
+            // The queryName typically contains the table name (e.g., "Table1.Organization")
+            const queryName = orgColumn.queryName || orgColumn.displayName;
+            const tableName = queryName.split('.')[0] || queryName;
+            const columnName = queryName.split('.').pop() || orgColumn.displayName;
+            
+            console.log("[PasswordFilter] Applying filter:", {
+                organization,
+                tableName,
+                columnName,
+                queryName,
+                displayName: orgColumn.displayName
+            });
+            
+            // Create a basic filter JSON
+            // This filter will be applied to all visuals using the same data source
+            const filterJson: any = {
+                $schema: "http://powerbi.com/product/schema#basic",
                 target: {
-                    table: this.organizationTableName,
-                    column: this.organizationColumnQueryName
+                    table: tableName,
+                    column: columnName
                 },
                 operator: "In",
-                values: [organization],
-                filterType: 1 // BasicFilter type
+                values: [organization]
             };
 
-            // Use the correct Power BI API method to apply the filter
-            // This applies a cross-filter that affects all visuals using the same field
-            // applyJsonFilter(filter, objectName, propertyName, action)
-            this.host.applyJsonFilter(filter, "general", "filter", FilterAction.merge);
+            console.log("[PasswordFilter] Filter JSON:", JSON.stringify(filterJson, null, 2));
+
+            // Apply the filter globally using host.applyJsonFilter
+            // This will filter all visuals that use the same data source
+            this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
+            
+            console.log("[PasswordFilter] Filter applied successfully");
             
         } catch (error: any) {
             const errorMsg = error?.message || String(error);
             this.showMessage(`Filter error: ${errorMsg}`, "error");
-        }
-    }
-
-    private clearFilter() {
-        try {
-            if (!this.organizationTableName || !this.organizationColumnQueryName) {
-                return;
-            }
-
-            // Clear the filter by applying an empty filter (no values)
-            // This makes other visuals show no data when there's no valid password
-            const emptyFilter: any = {
-                $schema: "https://powerbi.com/product/schema#basic",
-                target: {
-                    table: this.organizationTableName,
-                    column: this.organizationColumnQueryName
-                },
-                operator: "In",
-                values: [], // Empty values = no matches = no data shown
-                filterType: 1 // BasicFilter type
-            };
-
-            // Apply empty filter to clear the selection
-            // applyJsonFilter(filter, objectName, propertyName, action)
-            this.host.applyJsonFilter(emptyFilter, "general", "filter", FilterAction.merge);
-            
-        } catch (error: any) {
-            // Silently handle clear filter errors
+            console.error("[PasswordFilter] Filter error:", error);
+            console.error("[PasswordFilter] Error stack:", error?.stack);
         }
     }
 

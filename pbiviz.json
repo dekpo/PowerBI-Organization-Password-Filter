@@ -1,8 +1,8 @@
 {
   "visual": {
-    "name": "organizationPasswordFilter",
+    "name": "OrganizationPasswordFilter",
     "displayName": "Organization Password Filter",
-    "guid": "organizationPasswordFilter1234567890ABCDEF",
+    "guid": "OrganizationPasswordFilter",
     "visualClassName": "OrganizationPasswordFilter",
     "version": "1.0.0.0",
     "description": "A custom visual that prompts for a password and filters data by organization",
