@@ -5,8 +5,8 @@ import VisualConstructorOptions = powerbiVisualsApi.extensibility.visual.VisualC
 import DialogConstructorOptions = powerbiVisualsApi.extensibility.visual.DialogConstructorOptions;
 var powerbiKey: any = "powerbi";
 var powerbi: any = window[powerbiKey];
-var OrganizationPasswordFilter: IVisualPlugin = {
-    name: 'OrganizationPasswordFilter',
+var OrgPassFilter: IVisualPlugin = {
+    name: 'OrgPassFilter',
     displayName: 'Organization Password Filter',
     class: 'OrganizationPasswordFilter',
     apiVersion: '5.3.0',
@@ -27,6 +27,6 @@ var OrganizationPasswordFilter: IVisualPlugin = {
 if (typeof powerbi !== "undefined") {
     powerbi.visuals = powerbi.visuals || {};
     powerbi.visuals.plugins = powerbi.visuals.plugins || {};
-    powerbi.visuals.plugins["OrganizationPasswordFilter"] = OrganizationPasswordFilter;
+    powerbi.visuals.plugins["OrgPassFilter"] = OrgPassFilter;
 }
-export default OrganizationPasswordFilter;
+export default OrgPassFilter;
