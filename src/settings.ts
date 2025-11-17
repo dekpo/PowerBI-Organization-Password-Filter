@@ -68,9 +68,16 @@ class FilterSettingsCard extends FormattingSettingsCard {
         placeholder: '{"password1":"FAO","password2":"UNICEF"}'
     });
 
+    public adminPassword = new formattingSettings.TextInput({
+        name: "adminPassword",
+        displayName: "Admin Password",
+        value: "",
+        placeholder: "Enter admin password to view all data"
+    });
+
     public name: string = "filterSettings";
     public displayName: string = "Filter Settings";
-    public slices: Array<FormattingSettingsSlice> = [this.organizationMapping];
+    public slices: Array<FormattingSettingsSlice> = [this.organizationMapping, this.adminPassword];
 }
 
 /**

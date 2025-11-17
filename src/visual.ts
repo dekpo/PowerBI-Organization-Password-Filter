@@ -185,6 +185,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         // CRITICAL: Block all data access if no password has been entered
         if (!this.currentOrganization) {
             this.blockAllData();
+        } else if (this.currentOrganization === "ADMIN") {
+            // Admin mode - clear all filters to show all data
+            this.clearFilter();
         } else {
             // Apply filter for the current organization
             this.applyFilter(this.currentOrganization);
@@ -342,6 +345,86 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             this.showMessage(`Filter error: ${errorMsg}`, "error");
             console.error("[PasswordFilter] Filter error:", error);
             console.error("[PasswordFilter] Error stack:", error?.stack);
+        }
+    }
+
+    /**
+     * Clear all filters to show all data (admin mode)
+     */
+    private clearFilter() {
+        try {
+            if (!this.currentDataView || !this.currentDataView.table) {
+                console.log("[PasswordFilter] No data view available for clearing filter");
+                return;
+            }
+
+            // Find organization column
+            const table = this.currentDataView.table;
+            const orgColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName.includes("organization") || colName.includes("org");
+            });
+
+            if (orgColIndex < 0) {
+                console.log("[PasswordFilter] Organization column not found, removing filter");
+                // Remove filter by passing empty array
+                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
+                return;
+            }
+
+            const orgColumn = table.columns[orgColIndex];
+            const queryName = orgColumn.queryName || orgColumn.displayName;
+            const tableName = queryName.split('.')[0] || queryName;
+            const columnName = queryName.split('.').pop() || orgColumn.displayName;
+            
+            // Get all unique organization values to create a filter that includes everything
+            const uniqueOrgs = new Set<string>();
+            if (table.rows) {
+                table.rows.forEach((row: any) => {
+                    const orgValue = String(row[orgColIndex] || "").trim();
+                    if (orgValue) {
+                        uniqueOrgs.add(orgValue);
+                    }
+                });
+            }
+            
+            const allOrgs = Array.from(uniqueOrgs);
+            
+            console.log("[PasswordFilter] Clearing filter for admin access - showing all organizations:", {
+                tableName,
+                columnName,
+                organizationCount: allOrgs.length
+            });
+            
+            if (allOrgs.length > 0) {
+                // Create a filter that includes all organizations (effectively shows all data)
+                const filterJson: any = {
+                    $schema: "http://powerbi.com/product/schema#basic",
+                    target: {
+                        table: tableName,
+                        column: columnName
+                    },
+                    operator: "In",
+                    values: allOrgs
+                };
+                
+                // Apply filter with all organizations
+                this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
+            } else {
+                // If no organizations found, remove the filter
+                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
+            }
+            
+            console.log("[PasswordFilter] Filter cleared successfully - showing all data");
+            
+        } catch (error: any) {
+            console.error("[PasswordFilter] Error clearing filter:", error);
+            // Try alternative method: remove filter with empty array
+            try {
+                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
+            } catch (e) {
+                console.error("[PasswordFilter] Failed to clear filter:", e);
+            }
         }
     }
 
@@ -521,6 +604,20 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
      * Validate password and apply filter (used for auto-submit)
      */
     private validateAndApplyPassword(password: string, silent: boolean = false): void {
+        // First check if it's the admin password
+        const adminPassword = this.formattingSettings?.filterSettings?.adminPassword?.value?.trim() || "";
+        
+        if (adminPassword && password === adminPassword) {
+            // Admin password matched - show all data without filtering
+            this.currentOrganization = "ADMIN"; // Special marker for admin mode
+            if (!silent) {
+                this.showMessage("Admin access granted - showing all data", "success");
+            }
+            // Clear all filters to show all data
+            this.clearFilter();
+            return;
+        }
+
         // Get organization mapping from settings or use default
         const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
             this.getDefaultPasswordMapping();

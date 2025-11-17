@@ -3,12 +3,13 @@
 A custom Power BI visual that provides a login interface with password-based organization filtering. The visual allows users to enter a password and filters the data source based on the organization value. Password persists across page navigations, making it ideal for use as a login page at the beginning of presentations.
 
 **Visual Name in Power BI:** Login  
-**Package File:** `OrgPassFilter.1.0.2.0.pbiviz`  
-**Version:** 1.0.2.0
+**Package File:** `OrgPassFilter.1.0.3.0.pbiviz`  
+**Version:** 1.0.3.0
 
 ## Features
 
 - **Password-based filtering**: Enter a password to filter data by organization
+- **Admin password support**: Configure an admin password to view all data without organization filtering
 - **Password persistence**: Password value persists across page navigations using Power BI's built-in persistence mechanism
 - **Auto-filter restoration**: Automatically reapplies filters when navigating between pages
 - **Customizable title**: Change the component title/label via formatting options (default: "Login")
@@ -44,7 +45,7 @@ A custom Power BI visual that provides a login interface with password-based org
    ```bash
    npm run build
    ```
-   This creates `OrgPassFilter.1.0.2.0.pbiviz` in the `dist` folder.
+   This creates `OrgPassFilter.1.0.3.0.pbiviz` in the `dist` folder.
 
 2. **Or start the development server (optional):**
    ```bash
@@ -59,7 +60,7 @@ A custom Power BI visual that provides a login interface with password-based org
    - Go to **Visualizations** pane
    - Click the **...** (three dots) at the bottom
    - Select **Import a visual from a file**
-   - Choose `OrgPassFilter.1.0.2.0.pbiviz` from the `dist` folder
+   - Choose `OrgPassFilter.1.0.3.0.pbiviz` from the `dist` folder
 
 2. **Add data:**
    - Import your `data.csv` file into Power BI
@@ -82,6 +83,7 @@ A custom Power BI visual that provides a login interface with password-based org
          "WIPO123": "WIPO"
        }
        ```
+     - **Admin Password**: (Optional) Enter an admin password to view all data without organization filtering
 
 4. **Use the visual:**
    - Enter a password in the input field (e.g., "FAO123")
@@ -90,6 +92,7 @@ A custom Power BI visual that provides a login interface with password-based org
    - All visuals using the same data source will be filtered automatically
    - **Password persists**: When you navigate to another page, the password field will be automatically filled and the filter will remain active
    - Clear the password field and click Enter to reset the filter
+   - **Admin mode**: Enter the admin password (if configured) to view all data without filtering
 
 ## Default Password Mappings
 
@@ -101,6 +104,16 @@ The visual comes with default password mappings:
 - `WIPO123` → WIPO
 
 You can customize these in the visual's formatting options.
+
+## Admin Password Feature
+
+The visual supports an optional admin password that bypasses organization filtering:
+
+- **Configure Admin Password**: Set an admin password in **Filter Settings** → **Admin Password**
+- **Admin Access**: When the admin password is entered, all filters are cleared and all data is displayed
+- **Use Case**: Useful for administrators or reviewers who need to see all data across all organizations
+- **Priority**: Admin password is checked first before organization password mappings
+- **Message**: When admin password is used, you'll see "Admin access granted - showing all data"
 
 ## Data Requirements
 
@@ -156,7 +169,7 @@ The visual displays custom messages below the password field to provide user fee
 ## Troubleshooting
 
 **Visual not appearing:**
-- Make sure you've imported `OrgPassFilter.1.0.2.0.pbiviz` correctly
+- Make sure you've imported `OrgPassFilter.1.0.3.0.pbiviz` correctly
 - Check that Power BI Desktop is updated to the latest version
 - Try restarting Power BI Desktop after importing
 
@@ -185,7 +198,7 @@ To modify the visual:
 2. Modify styles in `style/visual.less`
 3. Update capabilities in `capabilities.json`
 4. Rebuild with `npm run build`
-5. Re-import `OrgPassFilter.1.0.2.0.pbiviz` in Power BI Desktop
+5. Re-import `OrgPassFilter.1.0.3.0.pbiviz` in Power BI Desktop
 
 **Development Server:**
 - Run `npm start` to start the development server (optional)

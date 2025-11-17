@@ -79,6 +79,13 @@
             "text": true
           },
           "description": "JSON mapping: {\"password1\":\"FAO\",\"password2\":\"UNICEF\"}"
+        },
+        "adminPassword": {
+          "displayName": "Admin Password",
+          "type": {
+            "text": true
+          },
+          "description": "Admin password to view all data without organization filtering"
         }
       }
     }

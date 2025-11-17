@@ -4,8 +4,8 @@
     "displayName": "Login",
     "guid": "OrgPassFilter",
     "visualClassName": "OrganizationPasswordFilter",
-    "version": "1.0.2.0",
-    "description": "A login component that prompts for a password and filters data by organization. Password persists across page navigations. Displays custom user messages for password validation feedback.",
+        "version": "1.0.3.0",
+        "description": "A login component that prompts for a password and filters data by organization. Supports admin password to view all data without filtering. Password persists across page navigations. Displays custom user messages for password validation feedback.",
     "supportUrl": "https://github.com",
     "gitHubUrl": ""
   },
