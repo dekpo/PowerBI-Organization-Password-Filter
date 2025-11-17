@@ -5,7 +5,7 @@
     "guid": "OrgPassFilter",
     "visualClassName": "OrganizationPasswordFilter",
         "version": "1.0.3.0",
-        "description": "A login component that prompts for a password and filters data by organization. Supports admin password to view all data without filtering. Password persists across page navigations. Displays custom user messages for password validation feedback.",
+        "description": "A login component that prompts for a password and filters data by organization on the current page. Supports admin password to view all data. Note: Password does not persist across pages for end users (viewer mode). Best used in single-page dashboards or with Power BI Row-Level Security.",
     "supportUrl": "https://github.com",
     "gitHubUrl": ""
   },

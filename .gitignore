@@ -13,5 +13,6 @@ dist/
 *.pbix
 DEBUGGING_PROMPT.md
 DEBUGGING_GUIDE.md
+PERSISTENCE_LIMITATIONS.md
 webpack.statistics.prod.html
 

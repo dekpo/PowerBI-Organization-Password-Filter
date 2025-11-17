@@ -1,25 +1,43 @@
 # Power BI Custom Visual: Login
 
-A custom Power BI visual that provides a login interface with password-based organization filtering. The visual allows users to enter a password and filters the data source based on the organization value. Password persists across page navigations, making it ideal for use as a login page at the beginning of presentations.
+A custom Power BI visual that provides a login interface with password-based organization filtering. The visual allows users to enter a password and filters the data source based on the organization value.
 
 **Visual Name in Power BI:** Login  
 **Package File:** `OrgPassFilter.1.0.3.0.pbiviz`  
 **Version:** 1.0.3.0
 
+## ⚠️ Important Limitations
+
+**Password persistence does NOT work across multiple pages for end users (report viewers).** This is due to Power BI's architecture:
+- Custom visuals create isolated instances on each page
+- `persistProperties` only works for synchronized visuals (requires edit mode)
+- Filters applied via `applyJsonFilter` are page-level, not report-level
+- End users cannot synchronize visuals (viewer mode only)
+
+**Recommended Use Cases:**
+1. **Single-page dashboard** - Place all content on one scrollable page (no page navigation)
+2. **Report editors only** - Password persistence works when visuals are synchronized in edit mode
+3. **Use Power BI Row-Level Security (RLS) instead** - Proper enterprise solution for organization-based filtering
+
 ## Features
 
 - **Password-based filtering**: Enter a password to filter data by organization
 - **Admin password support**: Configure an admin password to view all data without organization filtering
-- **Password persistence**: Password value persists across page navigations using Power BI's built-in persistence mechanism
-- **Auto-filter restoration**: Automatically reapplies filters when navigating between pages
+- **Secure password input**: True password field (characters hidden)
 - **Customizable title**: Change the component title/label via formatting options (default: "Login")
 - **Secure access control**: Different passwords unlock different organizations
-- **Global filtering**: Applies filters to all visuals using the same data source
+- **Page-level filtering**: Applies filters to all visuals on the current page
 - **Dynamic filtering**: Filters are applied to the Power BI data model in real-time
 - **Customizable password mapping**: Configure password-to-organization mappings via formatting options
 - **Data protection**: Blocks all data access until a valid password is entered
 - **Clean UI**: Power BI default title is hidden, showing only your custom title
 - **User-friendly messages**: Displays custom error and success messages below the password field
+
+### ⚠️ Limitations
+
+- **No cross-page persistence for viewers**: Password and filter do not persist when navigating to other pages in published reports
+- **Page-level filters only**: Filters created by the visual only affect the current page
+- **Requires re-entry**: Users must enter password again on each page (if visual is placed on multiple pages)
 
 ## Prerequisites
 
@@ -89,13 +107,17 @@ A custom Power BI visual that provides a login interface with password-based org
    - Enter a password in the input field (e.g., "FAO123")
    - Click **Enter** or press Enter
    - The visual will filter data by the corresponding organization
-   - All visuals using the same data source will be filtered automatically
-   - **Password persistence**: The visual uses a smart dual-strategy approach:
-     - **Strategy 1**: Restores password from persisted properties (if available)
-     - **Strategy 2**: If properties aren't available, it checks the filter state and reverse-engineers the password from the currently filtered organization
-   - **Best Practice**: Place the visual on a dedicated login page (Page 1). When password is entered, the filter persists across ALL pages automatically. You can optionally add the visual to other pages if users need to change passwords, but it's not required.
+   - All visuals **on the same page** will be filtered automatically
    - Clear the password field and click Enter to reset the filter
    - **Admin mode**: Enter the admin password (if configured) to view all data without filtering
+
+5. **⚠️ Important for multi-page reports:**
+   - Password does NOT persist across pages for end users (viewers)
+   - Users must re-enter password on each page if visual is placed on multiple pages
+   - **Recommended**: Use one of these approaches instead:
+     - **Single-page design**: Place all content on one scrollable page
+     - **Power BI Row-Level Security (RLS)**: Assign users to roles (no password needed)
+     - **Report editors**: Password persistence works when visuals are synchronized (edit mode only)
 
 ## Default Password Mappings
 
@@ -125,35 +147,64 @@ The visual supports an optional admin password that bypasses organization filter
 - The organization values should match the values in your password mapping exactly (case-sensitive)
 - All visuals that need to be filtered must use the same data source table
 
-## Password Persistence
+## Password Persistence and Limitations
 
-The visual uses a **dual-strategy approach** for password persistence:
+### Current Behavior
 
-### Strategy 1: Persisted Properties
-- Uses Power BI's `persistProperties` mechanism to save the password
-- Works when visuals are synchronized (when copying, choose "Synchronize")
+**Within the Same Visual Instance (Same Page):**
+- ✅ Password is saved using Power BI's `persistProperties`
+- ✅ Password persists if you refresh the page or return to it
+- ✅ Filters apply to all visuals on the same page
 
-### Strategy 2: Filter State Detection (Smart Fallback)
-- **This is the key innovation!** Since filters persist across pages in Power BI, the visual can detect if a filter is already applied
-- When you navigate to a new page, if a filter is active, the visual examines which organization is currently filtered
-- It then reverse-engineers which password was used to create that filter
-- The password is automatically restored to the input field
+**Across Multiple Pages for End Users (Viewers):**
+- ❌ Password does NOT persist when navigating to other pages
+- ❌ Filters do NOT persist across pages (page-level only)
+- ❌ Each page creates a new visual instance with no shared state
+- ❌ Users must re-enter password on each page
 
-### How It Works:
-1. **Enter password on Page 1** → Filter is applied globally
-2. **Navigate to Page 2** → Filter persists (Power BI does this automatically)
-3. **Visual detects filter** → Sees only "FAO" organization is shown
-4. **Reverse-engineers password** → Looks up which password maps to "FAO" → Finds "FAO123"
-5. **Restores password** → Input field is auto-filled with "FAO123"
+**For Report Editors (Edit Mode):**
+- ✅ Password persists if visuals are synchronized (copy visual → choose "Synchronize")
+- ⚠️ Only works in edit mode, not for end users viewing published reports
 
-### Best Practice:
-- **Recommended**: Place the visual on **ONE page only** (e.g., Page 1 - Login Page)
-- When password is entered, the filter applies to **ALL pages automatically**
-- Other pages don't need the visual - they just show filtered data
-- Users only need to enter password once per session
-- If you want to allow password changes from any page, you can add the visual to multiple pages, and it will auto-detect the current filter state
+### Why This Limitation Exists
 
-**Note:** The password is stored within the Power BI report file and persists for the current session. It will be cleared when the report is closed or refreshed.
+Power BI's architecture prevents cross-page state sharing for custom visuals in viewer mode:
+- Custom visuals create isolated instances on each page
+- `localStorage` is blocked by Power BI's sandbox
+- `applyJsonFilter` creates page-level filters, not report-level filters
+- `persistProperties` only works within the same instance or synchronized instances (edit mode only)
+- End users (viewers) cannot synchronize visuals
+
+### Recommended Solutions
+
+**Option 1: Single-Page Dashboard (Works with Current Visual)**
+- Place ALL content on ONE scrollable page
+- Login section at top, data sections below
+- Use bookmarks/buttons to show/hide sections
+- No page navigation = no persistence problems
+
+**Option 2: Power BI Row-Level Security (Recommended Enterprise Solution)**
+- Configure roles in Power BI Desktop (one role per organization)
+- Assign users to roles in Power BI Service
+- Users automatically see only their organization's data
+- No password visual needed
+- Works perfectly across all pages
+
+**Option 3: Accept Re-Entry (Current Behavior)**
+- Place visual on all pages
+- Users re-enter password on each page
+- Not ideal UX, but works
+
+### Best Practice
+
+For production reports with end users:
+- **Use Power BI Row-Level Security (RLS)** instead of this visual
+- Or design as a **single-page dashboard**
+
+This visual is best suited for:
+- Demo/prototype reports
+- Reports used by editors (who can synchronize visuals)
+- Single-page dashboards
 
 ## User Messages
 
