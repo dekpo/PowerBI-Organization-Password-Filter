@@ -378,6 +378,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             console.log("[PasswordFilter] Applying blocking filter:", JSON.stringify(blockingFilter, null, 2));
             this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
             
+            // Apply PasswordValid filter (set to "0" for invalid)
+            this.applyPasswordValidFilter(false);
+            
         } catch (error: any) {
             console.error("[PasswordFilter] Error blocking data:", error);
         }
@@ -438,6 +441,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             // Use merge - this is the standard way to apply filters
             this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
             
+            // Apply PasswordValid filter (set to "1" for valid password)
+            this.applyPasswordValidFilter(true);
+            
             console.log("[PasswordFilter] Filter applied successfully");
             
         } catch (error: any) {
@@ -445,6 +451,62 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             this.showMessage(`Filter error: ${errorMsg}`, "error");
             console.error("[PasswordFilter] Filter error:", error);
             console.error("[PasswordFilter] Error stack:", error?.stack);
+        }
+    }
+
+    /**
+     * Apply PasswordValid filter (optional feature for button visibility)
+     * This is non-breaking - only works if PasswordValid column exists
+     */
+    private applyPasswordValidFilter(isValid: boolean) {
+        try {
+            if (!this.currentDataView || !this.currentDataView.table) {
+                return; // Silently fail if no data view
+            }
+
+            const table = this.currentDataView.table;
+            
+            // Find PasswordValid column (case-insensitive)
+            const passwordValidColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName === "passwordvalid" || colName === "password_valid";
+            });
+
+            // If column doesn't exist, silently return (non-breaking feature)
+            if (passwordValidColIndex < 0) {
+                return;
+            }
+
+            const passwordValidColumn = table.columns[passwordValidColIndex];
+            const queryName = passwordValidColumn.queryName || passwordValidColumn.displayName;
+            const tableName = queryName.split('.')[0] || queryName;
+            const columnName = queryName.split('.').pop() || passwordValidColumn.displayName;
+            
+            const filterValue = isValid ? "1" : "0";
+            
+            console.log("[PasswordFilter] Applying PasswordValid filter:", {
+                isValid,
+                filterValue,
+                tableName,
+                columnName
+            });
+            
+            const filterJson: any = {
+                $schema: "http://powerbi.com/product/schema#basic",
+                target: {
+                    table: tableName,
+                    column: columnName
+                },
+                operator: "In",
+                values: [filterValue]
+            };
+
+            this.host.applyJsonFilter(filterJson, "passwordValid", "filter", powerbi.FilterAction.merge);
+            console.log("[PasswordFilter] PasswordValid filter applied successfully");
+            
+        } catch (error: any) {
+            // Silently fail - this is an optional feature
+            console.log("[PasswordFilter] PasswordValid filter not available (optional feature):", error?.message);
         }
     }
 
@@ -514,6 +576,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 // If no organizations found, remove the filter
                 this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
             }
+            
+            // Apply PasswordValid filter (set to "1" for admin access)
+            this.applyPasswordValidFilter(true);
             
             console.log("[PasswordFilter] Filter cleared successfully - showing all data");
             
@@ -911,7 +976,7 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             if (!silent) {
                 this.showMessage("Admin access granted - showing all data", "success");
             }
-            // Clear all filters to show all data
+            // Clear all filters to show all data (this will also set PasswordValid to "1")
             this.clearFilter();
             return;
         }
@@ -936,11 +1001,12 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             if (!silent) {
                 this.showMessage("Access granted", "success");
             }
-            // Apply filter to Power BI globally
+            // Apply filter to Power BI globally (this will also set PasswordValid to "1")
             this.applyFilter(organization);
         } else if (!silent) {
             this.showMessage("Invalid password", "error");
             this.currentOrganization = null;
+            // Block all data (this will also set PasswordValid to "0")
             this.blockAllData();
         }
     }

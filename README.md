@@ -3,8 +3,8 @@
 A custom Power BI visual that provides a login interface with password-based organization filtering. The visual allows users to enter a password and filters the data source based on the organization value.
 
 **Visual Name in Power BI:** Login  
-**Package File:** `OrgPassFilter.1.0.3.0.pbiviz`  
-**Version:** 1.0.3.0
+**Package File:** `OrgPassFilter.1.0.4.0.pbiviz`  
+**Version:** 1.0.4.0
 
 ## ⚠️ Important Limitations
 
@@ -32,6 +32,7 @@ A custom Power BI visual that provides a login interface with password-based org
 - **Data protection**: Blocks all data access until a valid password is entered
 - **Clean UI**: Power BI default title is hidden, showing only your custom title
 - **User-friendly messages**: Displays custom error and success messages below the password field
+- **Button visibility control**: Optional PasswordValid column support for conditional button visibility (NEW in v1.0.4.0)
 
 ### ⚠️ Limitations
 
@@ -63,7 +64,7 @@ A custom Power BI visual that provides a login interface with password-based org
    ```bash
    npm run build
    ```
-   This creates `OrgPassFilter.1.0.3.0.pbiviz` in the `dist` folder.
+   This creates `OrgPassFilter.1.0.4.0.pbiviz` in the `dist` folder.
 
 2. **Or start the development server (optional):**
    ```bash
@@ -78,7 +79,7 @@ A custom Power BI visual that provides a login interface with password-based org
    - Go to **Visualizations** pane
    - Click the **...** (three dots) at the bottom
    - Select **Import a visual from a file**
-   - Choose `OrgPassFilter.1.0.3.0.pbiviz` from the `dist` folder
+   - Choose `OrgPassFilter.1.0.4.0.pbiviz` from the `dist` folder
 
 2. **Add data:**
    - Import your `data.csv` file into Power BI
@@ -140,6 +141,21 @@ The visual supports an optional admin password that bypasses organization filter
 - **Priority**: Admin password is checked first before organization password mappings
 - **Message**: When admin password is used, you'll see "Admin access granted - showing all data"
 
+## Button Visibility Control Feature (NEW in v1.0.4.0)
+
+The visual now supports conditional button visibility through an optional `PasswordValid` column:
+
+- **How It Works**: When a valid password is entered, the visual sets `PasswordValid = "1"`. When invalid or cleared, it sets `PasswordValid = "0"`
+- **Setup Required**: Add a `PasswordValid` column to your data model with default value "0"
+- **Use Case**: Show/hide Power BI buttons based on password validation status
+- **Non-Breaking**: This feature is completely optional - if the column doesn't exist, the visual works exactly as before
+- **Implementation**: See `ONE_PAGE_DASHBOARD_GUIDE.md` for detailed step-by-step instructions on setting up buttons with conditional visibility
+
+**Quick Setup:**
+1. Add a calculated column named `PasswordValid` to your data table with default value `"0"`
+2. Configure Power BI buttons to show/hide based on `PasswordValid` column value
+3. When users enter a valid password, buttons will automatically appear
+
 ## Data Requirements
 
 - Your dataset must contain an **Organization** column (or column with "Organization" or "Org" in the name)
@@ -182,6 +198,8 @@ Power BI's architecture prevents cross-page state sharing for custom visuals in 
 - Login section at top, data sections below
 - Use bookmarks/buttons to show/hide sections
 - No page navigation = no persistence problems
+- **NEW**: Add a `PasswordValid` column to your data model to enable conditional button visibility
+- **📖 See `ONE_PAGE_DASHBOARD_GUIDE.md` for complete step-by-step instructions**
 
 **Option 2: Power BI Row-Level Security (Recommended Enterprise Solution)**
 - Configure roles in Power BI Desktop (one role per organization)
@@ -242,7 +260,7 @@ The visual displays custom messages below the password field to provide user fee
 ## Troubleshooting
 
 **Visual not appearing:**
-- Make sure you've imported `OrgPassFilter.1.0.3.0.pbiviz` correctly
+- Make sure you've imported `OrgPassFilter.1.0.4.0.pbiviz` correctly
 - Check that Power BI Desktop is updated to the latest version
 - Try restarting Power BI Desktop after importing
 
@@ -271,7 +289,7 @@ To modify the visual:
 2. Modify styles in `style/visual.less`
 3. Update capabilities in `capabilities.json`
 4. Rebuild with `npm run build`
-5. Re-import `OrgPassFilter.1.0.3.0.pbiviz` in Power BI Desktop
+5. Re-import `OrgPassFilter.1.0.4.0.pbiviz` in Power BI Desktop
 
 **Development Server:**
 - Run `npm start` to start the development server (optional)

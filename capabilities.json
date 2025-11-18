@@ -9,6 +9,12 @@
       "displayName": "Organization",
       "name": "organization",
       "kind": "Grouping"
+    },
+    {
+      "displayName": "Password Valid (Optional)",
+      "name": "passwordValid",
+      "kind": "Grouping",
+      "description": "Optional column to control button visibility. Add a 'PasswordValid' column to your data model with values '0' or '1'."
     }
   ],
   "dataViewMappings": [
