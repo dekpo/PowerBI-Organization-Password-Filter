@@ -141,7 +141,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 // If only ONE organization is shown, a filter is likely active
                 if (filteredOrgs.size === 1) {
                     existingFilterOrg = Array.from(filteredOrgs)[0];
-                    console.log("[PasswordFilter] ⚠️ Detected existing filter for organization:", existingFilterOrg);
                 }
             }
         }
@@ -149,18 +148,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         // Strategy 1: Try to restore password from persisted properties (check ALL locations)
         // NOTE: This only works if visuals are synchronized OR if it's the same visual instance
         let passwordRestored = this.restorePasswordFromProperties(options);
-        
-        // DEBUG: Log whether metadata.objects exists
-        if (options?.dataViews?.[0]?.metadata?.objects) {
-            console.log("[PasswordFilter] ✓ metadata.objects is available - persistProperties should work");
-        } else {
-            console.log("[PasswordFilter] ⚠️ metadata.objects is UNDEFINED - visual instances are NOT synchronized!");
-            console.log("[PasswordFilter] ⚠️ SOLUTION: Copy visual to other pages and choose 'Synchronize' when prompted");
-        }
 
         // Strategy 2: If we detected an existing filter, restore password from it immediately
         if (!passwordRestored && existingFilterOrg && this.formattingSettings) {
-            console.log("[PasswordFilter] Found existing filter, restoring password from organization:", existingFilterOrg);
             const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
                 this.getDefaultPasswordMapping();
             let passwordMapping: { [key: string]: string };
@@ -175,7 +165,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     this.passwordInput.value = password;
                     this.currentOrganization = existingFilterOrg;
                     passwordRestored = true;
-                    console.log("[PasswordFilter] ✓ Password restored from existing filter:", password, "→", existingFilterOrg);
                     break;
                 }
             }
@@ -183,20 +172,17 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         
         // Strategy 3: If still no password, try filter state detection (fallback)
         if (!passwordRestored && this.formattingSettings) {
-            console.log("[PasswordFilter] Properties restore failed, trying filter state detection...");
             passwordRestored = this.restorePasswordFromFilter(dataView);
         }
         
-        // Strategy 3: If still no password, try again after a short delay (filter might not be applied yet)
+        // Strategy 4: If still no password, try again after a short delay (filter might not be applied yet)
         // This handles race conditions where filter hasn't been applied when visual loads
         if (!passwordRestored && this.formattingSettings) {
             setTimeout(() => {
                 if (!this.passwordInput.value.trim()) {
-                    console.log("[PasswordFilter] Retrying filter state detection after delay...");
                     const retryRestored = this.restorePasswordFromFilter(dataView);
                     if (retryRestored && this.passwordInput.value.trim()) {
                         const retryPassword = this.passwordInput.value.trim();
-                        console.log("[PasswordFilter] ✓ Password restored on retry:", retryPassword);
                         this.validateAndApplyPassword(retryPassword, true);
                     }
                 }
@@ -207,7 +193,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         // This ensures currentOrganization is set before we check it below
         if (passwordRestored && this.passwordInput && this.passwordInput.value.trim()) {
             const restoredPassword = this.passwordInput.value.trim();
-            console.log("[PasswordFilter] Immediately validating restored password:", restoredPassword);
             this.validateAndApplyPassword(restoredPassword, true);
         }
 
@@ -303,7 +288,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 this.renderInlineModeUI();
             }
         } catch (error) {
-            console.error("[PasswordFilter] Error in display mode handling:", error);
             // Fallback to inline mode on error
             if (this.passwordSection) {
                 this.passwordSection.style.display = "flex";
@@ -326,8 +310,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
 
     private handlePasswordSubmit() {
         const password = this.passwordInput.value.trim();
-        
-        console.log("[PasswordFilter] Password submitted:", password);
         
         if (!password) {
             this.showMessage("Please enter a password", "error");
@@ -368,8 +350,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
 
     private blockAllData() {
         try {
-            console.log("[PasswordFilter] Blocking all data access - no valid password");
-            
             if (!this.currentDataView || !this.currentDataView.table) {
                 // If no data view, try to apply a blocking filter anyway
                 // This will prevent any data from showing
@@ -417,14 +397,13 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 values: [] // Empty array means no data matches
             };
 
-            console.log("[PasswordFilter] Applying blocking filter:", JSON.stringify(blockingFilter, null, 2));
             this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
             
             // Apply PasswordValid filter (set to "0" for invalid)
             this.applyPasswordValidFilter(false);
             
         } catch (error: any) {
-            console.error("[PasswordFilter] Error blocking data:", error);
+            // Error blocking data - silently fail
         }
     }
 
@@ -432,7 +411,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         try {
             if (!this.currentDataView || !this.currentDataView.table) {
                 this.showMessage("No data view available for filtering", "error");
-                console.error("[PasswordFilter] No data view available");
                 return;
             }
 
@@ -445,7 +423,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
 
             if (orgColIndex < 0) {
                 this.showMessage("Organization column not found", "error");
-                console.error("[PasswordFilter] Organization column not found in columns:", table.columns.map((c: any) => c.displayName || c.queryName));
                 return;
             }
 
@@ -456,14 +433,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             const queryName = orgColumn.queryName || orgColumn.displayName;
             const tableName = queryName.split('.')[0] || queryName;
             const columnName = queryName.split('.').pop() || orgColumn.displayName;
-            
-            console.log("[PasswordFilter] Applying filter:", {
-                organization,
-                tableName,
-                columnName,
-                queryName,
-                displayName: orgColumn.displayName
-            });
             
             // Create a basic filter JSON
             // This filter will be applied to all visuals using the same data source
@@ -477,8 +446,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 values: [organization]
             };
 
-            console.log("[PasswordFilter] Filter JSON:", JSON.stringify(filterJson, null, 2));
-
             // Apply the filter globally using host.applyJsonFilter
             // Use merge - this is the standard way to apply filters
             this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
@@ -486,13 +453,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             // Apply PasswordValid filter (set to "1" for valid password)
             this.applyPasswordValidFilter(true);
             
-            console.log("[PasswordFilter] Filter applied successfully");
-            
         } catch (error: any) {
             const errorMsg = error?.message || String(error);
             this.showMessage(`Filter error: ${errorMsg}`, "error");
-            console.error("[PasswordFilter] Filter error:", error);
-            console.error("[PasswordFilter] Error stack:", error?.stack);
         }
     }
 
@@ -526,13 +489,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             
             const filterValue = isValid ? "1" : "0";
             
-            console.log("[PasswordFilter] Applying PasswordValid filter:", {
-                isValid,
-                filterValue,
-                tableName,
-                columnName
-            });
-            
             const filterJson: any = {
                 $schema: "http://powerbi.com/product/schema#basic",
                 target: {
@@ -544,11 +500,9 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             };
 
             this.host.applyJsonFilter(filterJson, "passwordValid", "filter", powerbi.FilterAction.merge);
-            console.log("[PasswordFilter] PasswordValid filter applied successfully");
             
         } catch (error: any) {
             // Silently fail - this is an optional feature
-            console.log("[PasswordFilter] PasswordValid filter not available (optional feature):", error?.message);
         }
     }
 
@@ -558,7 +512,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     private clearFilter() {
         try {
             if (!this.currentDataView || !this.currentDataView.table) {
-                console.log("[PasswordFilter] No data view available for clearing filter");
                 return;
             }
 
@@ -570,7 +523,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             });
 
             if (orgColIndex < 0) {
-                console.log("[PasswordFilter] Organization column not found, removing filter");
                 // Remove filter by passing empty array
                 this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
                 return;
@@ -594,12 +546,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             
             const allOrgs = Array.from(uniqueOrgs);
             
-            console.log("[PasswordFilter] Clearing filter for admin access - showing all organizations:", {
-                tableName,
-                columnName,
-                organizationCount: allOrgs.length
-            });
-            
             if (allOrgs.length > 0) {
                 // Create a filter that includes all organizations (effectively shows all data)
                 const filterJson: any = {
@@ -622,15 +568,12 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             // Apply PasswordValid filter (set to "1" for admin access)
             this.applyPasswordValidFilter(true);
             
-            console.log("[PasswordFilter] Filter cleared successfully - showing all data");
-            
         } catch (error: any) {
-            console.error("[PasswordFilter] Error clearing filter:", error);
             // Try alternative method: remove filter with empty array
             try {
                 this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
             } catch (e) {
-                console.error("[PasswordFilter] Failed to clear filter:", e);
+                // Failed to clear filter - silently fail
             }
         }
     }
@@ -674,9 +617,8 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     selector: null as any
                 }]
             });
-            console.log("[PasswordFilter] ✓ Password saved via persistProperties (editing mode)");
         } catch (error) {
-            console.warn("[PasswordFilter] persistProperties failed:", error);
+            // persistProperties failed - silently fail
         }
     }
 
@@ -702,13 +644,11 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 const objects = dataView?.metadata?.objects;
                 if (objects?.passwordSettings) {
                     persistedPassword = (objects.passwordSettings as any)?.savedPassword as string || "";
-                    console.log("[PasswordFilter] Method 1 - metadata.objects.passwordSettings:", persistedPassword || "not found");
                 }
                 
                 // Method 2: Check metadata.objects directly (alternative structure)
                 if (!persistedPassword && (dataView.metadata as any)?.objects?.passwordSettings) {
                     persistedPassword = ((dataView.metadata as any).objects.passwordSettings as any)?.savedPassword as string || "";
-                    console.log("[PasswordFilter] Method 2 - (dataView.metadata as any).objects:", persistedPassword || "not found");
                 }
                 
                 // Method 3: Check if properties are stored at the root level of objects
@@ -717,7 +657,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     for (const key in objects) {
                         if (objects[key] && (objects[key] as any).savedPassword) {
                             persistedPassword = (objects[key] as any).savedPassword as string || "";
-                            console.log("[PasswordFilter] Method 3 - Found savedPassword in objects." + key + ":", persistedPassword);
                             break;
                         }
                     }
@@ -728,14 +667,13 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     const metadata = dataView.metadata as any;
                     if (metadata?.objects) {
                         // Try all possible nested structures
-                        const checkNested = (obj: any, path: string = ""): string => {
+                        const checkNested = (obj: any): string => {
                             if (!obj || typeof obj !== "object") return "";
                             if (obj.savedPassword && typeof obj.savedPassword === "string") {
-                                console.log("[PasswordFilter] Method 4 - Found savedPassword at path:", path);
                                 return obj.savedPassword;
                             }
                             for (const key in obj) {
-                                const result = checkNested(obj[key], path ? `${path}.${key}` : key);
+                                const result = checkNested(obj[key]);
                                 if (result) return result;
                             }
                             return "";
@@ -751,7 +689,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     const persisted = (this.host as any).getPersistedProperties();
                     if (persisted?.passwordSettings?.savedPassword) {
                         persistedPassword = persisted.passwordSettings.savedPassword;
-                        console.log("[PasswordFilter] Method 5 - Found via host.getPersistedProperties:", persistedPassword);
                     }
                 } catch (e) {
                     // Method not available, ignore
@@ -763,18 +700,14 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 const currentValue = this.passwordInput.value.trim();
                 if (!currentValue || currentValue !== persistedPassword) {
                     this.passwordInput.value = persistedPassword;
-                    console.log("[PasswordFilter] ✓ Password restored from persistProperties:", persistedPassword);
                     return true;
                 } else {
-                    console.log("[PasswordFilter] ✓ Password already set:", persistedPassword);
                     return true;
                 }
             }
             
-            console.log("[PasswordFilter] ✗ No persisted password found in any location");
             return false;
         } catch (error) {
-            console.warn("[PasswordFilter] Failed to restore password:", error);
             return false;
         }
     }
@@ -799,12 +732,10 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             });
 
             if (orgColIndex < 0) {
-                console.log("[PasswordFilter] Filter detection: Organization column not found");
                 return false;
             }
 
             if (!table.rows || table.rows.length === 0) {
-                console.log("[PasswordFilter] Filter detection: No rows in data");
                 return false;
             }
 
@@ -817,8 +748,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 }
             });
 
-            console.log("[PasswordFilter] Filter detection: Found organizations:", Array.from(filteredOrgs));
-
             // Get password mapping
             const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
                 this.getDefaultPasswordMapping();
@@ -827,14 +756,12 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             try {
                 passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
             } catch (e) {
-                console.warn("[PasswordFilter] Failed to parse password mapping, using defaults");
                 passwordMapping = this.getDefaultPasswordMapping();
             }
 
             // If only one organization is shown, we can reverse-engineer the password
             if (filteredOrgs.size === 1) {
                 const filteredOrg = Array.from(filteredOrgs)[0];
-                console.log("[PasswordFilter] Filter detection: Single organization detected:", filteredOrg);
                 
                 // Find password that maps to this organization
                 for (const [password, org] of Object.entries(passwordMapping)) {
@@ -844,29 +771,17 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                         if (!currentValue || currentValue !== password) {
                             this.passwordInput.value = password;
                             this.currentOrganization = filteredOrg;
-                            console.log("[PasswordFilter] ✓ Password restored from filter state:", password, "→", filteredOrg);
                             return true;
                         } else {
                             this.currentOrganization = filteredOrg;
-                            console.log("[PasswordFilter] ✓ Password already matches filter state:", password);
                             return true;
                         }
                     }
                 }
-                console.log("[PasswordFilter] Filter detection: No password found for organization:", filteredOrg);
-            } else if (filteredOrgs.size > 1) {
-                // Multiple orgs shown - might be admin mode or no filter
-                console.log("[PasswordFilter] Filter detection: Multiple organizations detected (might be admin or no filter):", Array.from(filteredOrgs));
-                
-                // If admin password exists and we see multiple orgs, it might be admin mode
-                // But we can't be sure, so we don't restore password
-            } else {
-                console.log("[PasswordFilter] Filter detection: No organizations found in data");
             }
 
             return false;
         } catch (error) {
-            console.warn("[PasswordFilter] Failed to restore password from filter:", error);
             return false;
         }
     }
@@ -882,14 +797,13 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 // Only trigger if password exists but currentOrganization is not set
                 // This handles edge cases where immediate validation might have failed
                 if (password && !this.currentOrganization) {
-                    console.log("[PasswordFilter] Fallback: Validating password that wasn't validated immediately");
                     setTimeout(() => {
                         this.validateAndApplyPassword(password, true);
                     }, 100);
                 }
             }
         } catch (error) {
-            console.warn("[PasswordFilter] Failed to trigger auto-submit:", error);
+            // Failed to trigger auto-submit - silently fail
         }
     }
 
@@ -973,7 +887,7 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 });
             }
         } catch (error) {
-            console.warn("[PasswordFilter] Failed to hide Power BI title:", error);
+            // Failed to hide Power BI title - silently fail
         }
     }
 
@@ -1003,7 +917,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         try {
             passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
         } catch (e) {
-            console.warn("[PasswordFilter] Failed to parse mapping JSON, using default:", e);
             passwordMapping = this.getDefaultPasswordMapping();
         }
 
@@ -1040,7 +953,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             }
             return "inline";
         } catch (error) {
-            console.warn("[PasswordFilter] Error reading display mode:", error);
             return "inline";
         }
     }
@@ -1074,7 +986,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
 
             return false;
         } catch (error) {
-            console.warn("[PasswordFilter] Error detecting ShowLoginModal filter:", error);
             return false;
         }
     }
@@ -1117,9 +1028,8 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             };
 
             this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
-            console.log("[PasswordFilter] Cleared ShowLoginModal filter");
         } catch (error) {
-            console.warn("[PasswordFilter] Error clearing ShowLoginModal filter:", error);
+            // Error clearing ShowLoginModal filter - silently fail
         }
     }
 
@@ -1130,7 +1040,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         try {
             // Check if modal dialogs are allowed
             if (!this.host.hostCapabilities?.allowModalDialog) {
-                console.warn("[PasswordFilter] Modal dialogs are not allowed in this environment");
                 // Fallback to inline mode
                 this.renderInlineModeUI();
                 return;
@@ -1160,12 +1069,10 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 .then((result) => {
                     this.handleModalResult(result);
                 })
-                .catch((error) => {
-                    console.error("[PasswordFilter] Error opening modal:", error);
+                .catch(() => {
                     this.showMessage("Error opening login dialog", "error");
                 });
-        } catch (error) {
-            console.error("[PasswordFilter] Error in openPasswordModal:", error);
+        } catch {
             this.showMessage("Error opening login dialog", "error");
         }
     }
@@ -1193,8 +1100,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                     this.renderModalModeUI();
                 }
             }
-        } else if (result.actionId === DialogAction.Cancel) {
-            console.log("[PasswordFilter] Modal cancelled by user");
         }
     }
 
@@ -1204,7 +1109,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     private renderModalModeUI(): void {
         try {
             if (!this.container) {
-                console.warn("[PasswordFilter] Container not initialized, cannot render modal UI");
                 return;
             }
 
@@ -1368,7 +1272,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
                 this.container.appendChild(this.loggedInStatusDiv);
             }
         } catch (error) {
-            console.error("[PasswordFilter] Error rendering modal mode UI:", error);
             // Fallback to inline mode on error
             if (this.passwordSection) {
                 this.passwordSection.style.display = "flex";
