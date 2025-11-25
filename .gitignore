@@ -11,9 +11,6 @@ dist/
 *.userosscache
 *.sln.docstates
 *.pbix
-DEBUGGING_PROMPT.md
-DEBUGGING_GUIDE.md
-PERSISTENCE_LIMITATIONS.md
-ONE_PAGE_DASHBOARD_GUIDE.md
+projects/
 webpack.statistics.prod.html
 
