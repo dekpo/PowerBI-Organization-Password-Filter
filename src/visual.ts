@@ -2,6 +2,7 @@
 import powerbi from "powerbi-visuals-api";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { VisualFormattingSettingsModel } from "./settings";
+import { PasswordModalDialog, PasswordModalDialogResult } from "./PasswordModalDialog";
 
 import "./../style/visual.less";
 
@@ -13,6 +14,8 @@ import VisualObjectInstanceEnumeration = powerbi.VisualObjectInstanceEnumeration
 import DataView = powerbi.DataView;
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
 import ISelectionId = powerbi.visuals.ISelectionId;
+import DialogAction = powerbi.DialogAction;
+import VisualDialogPositionType = powerbi.VisualDialogPositionType;
 
 // Interface for data points with identity and organization
 interface DataPoint {
@@ -39,6 +42,13 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     private allData: any[] = [];
     private viewModel: ViewModel = { dataPoints: [] };
     private currentDataView: DataView | null = null;
+    
+    // Modal mode UI elements
+    private container: HTMLElement;
+    private passwordSection: HTMLElement;
+    private modalLoginButton: HTMLButtonElement | null = null;
+    private loggedInStatusDiv: HTMLDivElement | null = null;
+    private modalTriggered: boolean = false; // Track if modal was triggered to prevent multiple opens
 
     constructor(options?: VisualConstructorOptions) {
         if (!options) {
@@ -49,8 +59,8 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         this.formattingSettingsService = new FormattingSettingsService();
         
         // Create container
-        const container = document.createElement("div");
-        container.className = "passwordFilterContainer";
+        this.container = document.createElement("div");
+        this.container.className = "passwordFilterContainer";
         
         // Create title label
         this.titleLabel = document.createElement("div");
@@ -58,8 +68,8 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         this.titleLabel.textContent = "Login"; // Default title
         
         // Create password input section
-        const passwordSection = document.createElement("div");
-        passwordSection.className = "passwordSection";
+        this.passwordSection = document.createElement("div");
+        this.passwordSection.className = "passwordSection";
         
         this.passwordInput = document.createElement("input");
         this.passwordInput.type = "password";
@@ -73,14 +83,14 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         this.messageDiv = document.createElement("div");
         this.messageDiv.className = "messageDiv";
         
-        passwordSection.appendChild(this.passwordInput);
-        passwordSection.appendChild(this.submitButton);
-        passwordSection.appendChild(this.messageDiv);
+        this.passwordSection.appendChild(this.passwordInput);
+        this.passwordSection.appendChild(this.submitButton);
+        this.passwordSection.appendChild(this.messageDiv);
         
-        container.appendChild(this.titleLabel);
-        container.appendChild(passwordSection);
+        this.container.appendChild(this.titleLabel);
+        this.container.appendChild(this.passwordSection);
         
-        this.element.appendChild(container);
+        this.element.appendChild(this.container);
         
         // Hide Power BI's default title/header (shows column name like "Organization")
         this.hidePowerBITitle();
@@ -267,6 +277,38 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         // Fallback: Trigger auto-submit if password exists but wasn't validated yet
         // This handles edge cases where immediate validation might have failed
         this.triggerAutoSubmitIfNeeded();
+
+        // Check display mode and handle modal mode
+        try {
+            const displayMode = this.getDisplayMode();
+            
+            if (displayMode === "modal") {
+                // Modal mode: Check for Power BI button trigger
+                const showModalFilter = this.detectShowLoginModalFilter(dataView);
+                
+                if (showModalFilter && !this.modalTriggered) {
+                    // Power BI button triggered modal - open it
+                    this.modalTriggered = true;
+                    setTimeout(() => {
+                        this.openPasswordModal();
+                        this.clearShowLoginModalFilter();
+                        this.modalTriggered = false;
+                    }, 100);
+                }
+                
+                // Render modal mode UI (button or logged-in status)
+                this.renderModalModeUI();
+            } else {
+                // Inline mode: Show/hide form based on login state
+                this.renderInlineModeUI();
+            }
+        } catch (error) {
+            console.error("[PasswordFilter] Error in display mode handling:", error);
+            // Fallback to inline mode on error
+            if (this.passwordSection) {
+                this.passwordSection.style.display = "flex";
+            }
+        }
 
         // CRITICAL: Block all data access if no password has been entered
         if (!this.currentOrganization) {
@@ -618,23 +660,10 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     }
 
     /**
-     * Save password using multiple strategies for end-user persistence
-     * Strategy 1: sessionStorage (works for end-users across pages in the same session)
-     * Strategy 2: persistProperties (works during editing/design mode)
+     * Save password using persistProperties (works during editing/design mode for synchronized visuals)
      */
     private savePasswordToProperties(password: string): void {
-        // Strategy 1: Try sessionStorage (for end-users viewing the report)
-        // sessionStorage persists across pages in the same browser session
-        try {
-            if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.setItem('powerbi_org_password', password);
-                console.log("[PasswordFilter] ✓ Password saved to sessionStorage (end-user mode):", password);
-            }
-        } catch (storageError) {
-            console.warn("[PasswordFilter] sessionStorage not available:", storageError);
-        }
-        
-        // Strategy 2: Save via persistProperties (for editing mode)
+        // Save via persistProperties (for editing mode with synchronized visuals)
         try {
             this.host.persistProperties({
                 merge: [{
@@ -652,9 +681,7 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     }
 
     /**
-     * Restore password from multiple sources
-     * Priority 1: sessionStorage (for end-users)
-     * Priority 2: persistProperties (for editing mode)
+     * Restore password from persistProperties (for editing mode with synchronized visuals)
      * Returns true if a password was restored, false otherwise
      */
     private restorePasswordFromProperties(options: VisualUpdateOptions): boolean {
@@ -664,19 +691,6 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             }
 
             let persistedPassword = "";
-
-            // PRIORITY 1: Try sessionStorage first (works for end-users viewing the report)
-            try {
-                if (typeof sessionStorage !== 'undefined') {
-                    const sessionPass = sessionStorage.getItem('powerbi_org_password');
-                    if (sessionPass && sessionPass.trim()) {
-                        persistedPassword = sessionPass;
-                        console.log("[PasswordFilter] ✓ Password restored from sessionStorage (end-user mode):", persistedPassword);
-                    }
-                }
-            } catch (storageError) {
-                console.warn("[PasswordFilter] sessionStorage read failed:", storageError);
-            }
 
             // Try to read from Power BI's persisted properties
             // Check ALL possible locations where properties might be stored
@@ -1008,6 +1022,384 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             this.currentOrganization = null;
             // Block all data (this will also set PasswordValid to "0")
             this.blockAllData();
+        }
+    }
+
+    /**
+     * Helper function to get display mode as string
+     */
+    private getDisplayMode(): string {
+        try {
+            if (!this.formattingSettings || !this.formattingSettings.general) {
+                return "inline";
+            }
+            const useModalMode = this.formattingSettings.general.useModalMode?.value;
+            // ToggleSwitch returns boolean, so just check for true
+            if (useModalMode === true) {
+                return "modal";
+            }
+            return "inline";
+        } catch (error) {
+            console.warn("[PasswordFilter] Error reading display mode:", error);
+            return "inline";
+        }
+    }
+
+    /**
+     * Detect if ShowLoginModal filter is set (Power BI button trigger)
+     */
+    private detectShowLoginModalFilter(dataView: DataView): boolean {
+        try {
+            if (!dataView?.table) {
+                return false;
+            }
+
+            const table = dataView.table;
+            
+            // Find ShowLoginModal column (case-insensitive)
+            const modalColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName === "showloginmodal" || colName === "show_login_modal";
+            });
+
+            if (modalColIndex < 0) {
+                return false; // Column doesn't exist - silently return
+            }
+
+            // Check if filter shows "1" (meaning modal should open)
+            if (table.rows && table.rows.length > 0) {
+                const filterValue = String(table.rows[0][modalColIndex] || "0").trim();
+                return filterValue === "1";
+            }
+
+            return false;
+        } catch (error) {
+            console.warn("[PasswordFilter] Error detecting ShowLoginModal filter:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Clear ShowLoginModal filter after modal is opened
+     */
+    private clearShowLoginModalFilter(): void {
+        try {
+            if (!this.currentDataView?.table) {
+                return;
+            }
+
+            const table = this.currentDataView.table;
+            
+            // Find ShowLoginModal column
+            const modalColIndex = table.columns.findIndex((col: any) => {
+                const colName = (col.displayName || col.queryName || "").toLowerCase();
+                return colName === "showloginmodal" || colName === "show_login_modal";
+            });
+
+            if (modalColIndex < 0) {
+                return; // Column doesn't exist - silently return
+            }
+
+            const modalColumn = table.columns[modalColIndex];
+            const queryName = modalColumn.queryName || modalColumn.displayName;
+            const tableName = queryName.split('.')[0] || queryName;
+            const columnName = queryName.split('.').pop() || modalColumn.displayName;
+            
+            // Reset filter to "0"
+            const filterJson: any = {
+                $schema: "http://powerbi.com/product/schema#basic",
+                target: {
+                    table: tableName,
+                    column: columnName
+                },
+                operator: "In",
+                values: ["0"]
+            };
+
+            this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
+            console.log("[PasswordFilter] Cleared ShowLoginModal filter");
+        } catch (error) {
+            console.warn("[PasswordFilter] Error clearing ShowLoginModal filter:", error);
+        }
+    }
+
+    /**
+     * Open password modal dialog
+     */
+    private openPasswordModal(): void {
+        try {
+            // Check if modal dialogs are allowed
+            if (!this.host.hostCapabilities?.allowModalDialog) {
+                console.warn("[PasswordFilter] Modal dialogs are not allowed in this environment");
+                // Fallback to inline mode
+                this.renderInlineModeUI();
+                return;
+            }
+
+            const placeholder = "Enter password";
+            const buttonText = "Enter";
+
+            const dialogOptions: any = {
+                title: "", // Empty title to avoid duplicate - Power BI shows visual name automatically
+                size: {
+                    width: 400,
+                    height: 250
+                },
+                position: {
+                    type: VisualDialogPositionType.Center
+                },
+                actionButtons: [DialogAction.OK, DialogAction.Cancel]
+            };
+
+            const initialState = {
+                placeholder: placeholder,
+                buttonText: buttonText
+            };
+
+            this.host.openModalDialog(PasswordModalDialog.id, dialogOptions, initialState)
+                .then((result) => {
+                    this.handleModalResult(result);
+                })
+                .catch((error) => {
+                    console.error("[PasswordFilter] Error opening modal:", error);
+                    this.showMessage("Error opening login dialog", "error");
+                });
+        } catch (error) {
+            console.error("[PasswordFilter] Error in openPasswordModal:", error);
+            this.showMessage("Error opening login dialog", "error");
+        }
+    }
+
+    /**
+     * Handle modal dialog result
+     */
+    private handleModalResult(result: any): void {
+        if (result.actionId === DialogAction.OK && result.resultState) {
+            const dialogResult = result.resultState as PasswordModalDialogResult;
+            const password = dialogResult.password?.trim();
+
+            if (password) {
+                // Set password in input (for consistency)
+                if (this.passwordInput) {
+                    this.passwordInput.value = password;
+                }
+                
+                // Validate and apply password
+                this.validateAndApplyPassword(password, false);
+                
+                // Update UI
+                const displayMode = this.getDisplayMode();
+                if (displayMode === "modal") {
+                    this.renderModalModeUI();
+                }
+            }
+        } else if (result.actionId === DialogAction.Cancel) {
+            console.log("[PasswordFilter] Modal cancelled by user");
+        }
+    }
+
+    /**
+     * Render modal mode UI (button or logged-in status)
+     */
+    private renderModalModeUI(): void {
+        try {
+            if (!this.container) {
+                console.warn("[PasswordFilter] Container not initialized, cannot render modal UI");
+                return;
+            }
+
+            const isLoggedIn = this.currentOrganization !== null;
+
+            // Hide title label in modal mode to save space
+            if (this.titleLabel) {
+                this.titleLabel.style.display = "none";
+            }
+
+            // Hide inline form in modal mode
+            if (this.passwordSection) {
+                this.passwordSection.style.display = "none";
+            }
+
+            // Remove existing modal UI elements
+            if (this.modalLoginButton && this.modalLoginButton.parentNode) {
+                this.modalLoginButton.parentNode.removeChild(this.modalLoginButton);
+                this.modalLoginButton = null;
+            }
+            if (this.loggedInStatusDiv && this.loggedInStatusDiv.parentNode) {
+                this.loggedInStatusDiv.parentNode.removeChild(this.loggedInStatusDiv);
+                this.loggedInStatusDiv = null;
+            }
+
+            if (isLoggedIn) {
+                // Show logged-in status - compact green rectangle
+                this.loggedInStatusDiv = document.createElement("div");
+                this.loggedInStatusDiv.className = "loggedInStatus";
+                this.loggedInStatusDiv.style.cssText = `
+                    padding: 10px 12px;
+                    background-color: #e8f5e9;
+                    border: 1px solid #4caf50;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    align-items: center;
+                    box-sizing: border-box;
+                `;
+
+                const orgDisplay = this.currentOrganization === "ADMIN" ? "Admin" : this.currentOrganization;
+                
+                // Status text with green checkmark icon
+                const statusText = document.createElement("div");
+                statusText.style.cssText = `
+                    color: #2e7d32;
+                    font-size: 13px;
+                    font-weight: 500;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    margin: 0;
+                    line-height: 1.2;
+                `;
+                // Green checkmark icon
+                const checkmarkIcon = document.createElement("span");
+                checkmarkIcon.innerHTML = "✓";
+                checkmarkIcon.style.cssText = `
+                    color: #2e7d32;
+                    font-size: 14px;
+                    font-weight: bold;
+                `;
+                statusText.appendChild(checkmarkIcon);
+                statusText.appendChild(document.createTextNode(`Logged In as: ${orgDisplay}`));
+                this.loggedInStatusDiv.appendChild(statusText);
+
+                // Change password button - centered
+                const changePasswordBtn = document.createElement("button");
+                changePasswordBtn.className = "changePasswordButton";
+                changePasswordBtn.textContent = "Change Password";
+                changePasswordBtn.style.cssText = `
+                    padding: 6px 12px;
+                    background-color: #0078d4;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: background-color 0.2s;
+                    margin: 0;
+                `;
+                changePasswordBtn.onmouseover = () => {
+                    changePasswordBtn.style.backgroundColor = "#106ebe";
+                };
+                changePasswordBtn.onmouseout = () => {
+                    changePasswordBtn.style.backgroundColor = "#0078d4";
+                };
+                changePasswordBtn.addEventListener("click", () => {
+                    this.openPasswordModal();
+                });
+                this.loggedInStatusDiv.appendChild(changePasswordBtn);
+
+                this.container.appendChild(this.loggedInStatusDiv);
+            } else {
+                // Show login required - compact red/orange rectangle
+                this.loggedInStatusDiv = document.createElement("div");
+                this.loggedInStatusDiv.className = "loginRequiredStatus";
+                this.loggedInStatusDiv.style.cssText = `
+                    padding: 10px 12px;
+                    background-color: #fff3e0;
+                    border: 1px solid #ff9800;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    align-items: center;
+                    box-sizing: border-box;
+                `;
+
+                // Status text with orange cross icon
+                const statusText = document.createElement("div");
+                statusText.style.cssText = `
+                    color: #e65100;
+                    font-size: 13px;
+                    font-weight: 500;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    margin: 0;
+                    line-height: 1.2;
+                `;
+                // Orange cross icon
+                const crossIcon = document.createElement("span");
+                crossIcon.innerHTML = "✗";
+                crossIcon.style.cssText = `
+                    color: #e65100;
+                    font-size: 14px;
+                    font-weight: bold;
+                `;
+                statusText.appendChild(crossIcon);
+                statusText.appendChild(document.createTextNode("Login Required"));
+                this.loggedInStatusDiv.appendChild(statusText);
+
+                // Enter password button - centered
+                const enterPasswordBtn = document.createElement("button");
+                enterPasswordBtn.className = "enterPasswordButton";
+                enterPasswordBtn.textContent = "Enter Password";
+                enterPasswordBtn.style.cssText = `
+                    padding: 6px 12px;
+                    background-color: #ff9800;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: background-color 0.2s;
+                    margin: 0;
+                `;
+                enterPasswordBtn.onmouseover = () => {
+                    enterPasswordBtn.style.backgroundColor = "#f57c00";
+                };
+                enterPasswordBtn.onmouseout = () => {
+                    enterPasswordBtn.style.backgroundColor = "#ff9800";
+                };
+                enterPasswordBtn.addEventListener("click", () => {
+                    this.openPasswordModal();
+                });
+                this.loggedInStatusDiv.appendChild(enterPasswordBtn);
+
+                this.container.appendChild(this.loggedInStatusDiv);
+            }
+        } catch (error) {
+            console.error("[PasswordFilter] Error rendering modal mode UI:", error);
+            // Fallback to inline mode on error
+            if (this.passwordSection) {
+                this.passwordSection.style.display = "flex";
+            }
+        }
+    }
+
+    /**
+     * Render inline mode UI (show/hide form based on state)
+     */
+    private renderInlineModeUI(): void {
+        if (!this.passwordSection) {
+            return;
+        }
+
+        // Show title label in inline mode
+        if (this.titleLabel) {
+            this.titleLabel.style.display = "block";
+        }
+
+        // Show inline form
+        this.passwordSection.style.display = "flex";
+
+        // Remove modal UI elements if they exist
+        if (this.modalLoginButton && this.modalLoginButton.parentNode) {
+            this.modalLoginButton.parentNode.removeChild(this.modalLoginButton);
+            this.modalLoginButton = null;
+        }
+        if (this.loggedInStatusDiv && this.loggedInStatusDiv.parentNode) {
+            this.loggedInStatusDiv.parentNode.removeChild(this.loggedInStatusDiv);
+            this.loggedInStatusDiv = null;
         }
     }
 }

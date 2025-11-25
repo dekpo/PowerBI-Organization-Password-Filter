@@ -50,6 +50,13 @@
             "text": true
           },
           "description": "Title/label displayed above the password input"
+        },
+        "useModalMode": {
+          "displayName": "Use Modal Dialog Mode",
+          "type": {
+            "bool": true
+          },
+          "description": "When enabled, password form appears in a modal popup. When disabled, form is shown inline (default)."
         }
       }
     },

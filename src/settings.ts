@@ -17,9 +17,16 @@ class GeneralSettingsCard extends FormattingSettingsCard {
         placeholder: "Enter component title"
     });
 
+    public useModalMode = new formattingSettings.ToggleSwitch({
+        name: "useModalMode",
+        displayName: "Use Modal Dialog Mode",
+        value: false, // Default to inline mode
+        description: "When enabled, password form appears in a modal popup. When disabled, form is shown inline."
+    });
+
     public name: string = "general";
     public displayName: string = "General";
-    public slices: Array<FormattingSettingsSlice> = [this.title];
+    public slices: Array<FormattingSettingsSlice> = [this.title, this.useModalMode];
 }
 
 /**
@@ -81,12 +88,30 @@ class FilterSettingsCard extends FormattingSettingsCard {
 }
 
 /**
+ * Navigation Settings Card (for reference - bookmarks cannot be triggered programmatically)
+ */
+class NavigationSettingsCard extends FormattingSettingsCard {
+    public successBookmarkName = new formattingSettings.TextInput({
+        name: "successBookmarkName",
+        displayName: "Success Bookmark Name (Reference Only)",
+        value: "",
+        placeholder: "e.g., 'Access Granted'",
+        description: "⚠️ Note: Power BI API does not support programmatic bookmark triggering. Use buttons with PasswordValid measure filter instead."
+    });
+
+    public name: string = "navigationSettings";
+    public displayName: string = "Navigation Settings";
+    public slices: Array<FormattingSettingsSlice> = [this.successBookmarkName];
+}
+
+/**
  * Visual formatting settings model
  */
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     public general: GeneralSettingsCard = new GeneralSettingsCard();
     public passwordSettings: PasswordSettingsCard = new PasswordSettingsCard();
     public filterSettings: FilterSettingsCard = new FilterSettingsCard();
-    public cards = [this.general, this.passwordSettings, this.filterSettings];
+    public navigationSettings: NavigationSettingsCard = new NavigationSettingsCard();
+    public cards = [this.general, this.passwordSettings, this.filterSettings, this.navigationSettings];
 }
 
