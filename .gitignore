@@ -12,5 +12,6 @@ dist/
 *.sln.docstates
 *.pbix
 projects/
+*.csv
 webpack.statistics.prod.html
 

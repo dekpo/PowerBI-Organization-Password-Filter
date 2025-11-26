@@ -8,13 +8,8 @@
     {
       "displayName": "Organization",
       "name": "organization",
-      "kind": "Grouping"
-    },
-    {
-      "displayName": "Password Valid (Optional)",
-      "name": "passwordValid",
       "kind": "Grouping",
-      "description": "Optional column to control button visibility. Add a 'PasswordValid' column to your data model with values '0' or '1'."
+      "description": "Column containing organization names (e.g., FAO, WHO, UNICEF). This is used to filter data based on password."
     }
   ],
   "dataViewMappings": [
@@ -42,63 +37,40 @@
   ],
   "objects": {
     "general": {
-      "displayName": "General",
+      "displayName": "General Settings",
       "properties": {
         "title": {
           "displayName": "Title",
           "type": {
             "text": true
           },
-          "description": "Title/label displayed above the password input"
+          "description": "Title displayed above the login form"
         },
         "useModalMode": {
-          "displayName": "Use Modal Dialog Mode",
+          "displayName": "Use Modal Mode",
           "type": {
             "bool": true
           },
-          "description": "When enabled, password form appears in a modal popup. When disabled, form is shown inline (default)."
+          "description": "Show login in a popup dialog instead of inline (saves space)"
         }
       }
     },
-    "passwordSettings": {
-      "displayName": "Password Settings",
+    "security": {
+      "displayName": "Security Settings",
       "properties": {
-        "password": {
-          "displayName": "Password",
-          "type": {
-            "text": true
-          }
-        },
-        "showPassword": {
-          "displayName": "Show Password",
-          "type": {
-            "bool": true
-          }
-        },
-        "savedPassword": {
-          "displayName": "Saved Password",
-          "type": {
-            "text": true
-          }
-        }
-      }
-    },
-    "filterSettings": {
-      "displayName": "Filter Settings",
-      "properties": {
-        "organizationMapping": {
-          "displayName": "Organization Password Mapping",
+        "encryptedMappings": {
+          "displayName": "Encrypted Mappings (JSON)",
           "type": {
             "text": true
           },
-          "description": "JSON mapping: {\"password1\":\"FAO\",\"password2\":\"UNICEF\"}"
+          "description": "Paste encrypted JSON from script: node tools/encrypt-passwords.js"
         },
         "adminPassword": {
           "displayName": "Admin Password",
           "type": {
             "text": true
           },
-          "description": "Admin password to view all data without organization filtering"
+          "description": "Admin password to view all organizations without filtering"
         }
       }
     }

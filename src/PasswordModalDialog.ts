@@ -67,6 +67,8 @@ export class PasswordModalDialog {
             font-size: 14px;
             width: 100%;
             box-sizing: border-box;
+            direction: ltr;
+            text-align: left;
         `;
         contentWrapper.appendChild(passwordInput);
 

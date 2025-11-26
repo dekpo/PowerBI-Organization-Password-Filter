@@ -1,11 +1,11 @@
 {
   "visual": {
     "name": "OrganizationPasswordFilter",
-    "displayName": "Login",
+    "displayName": "Organization Login",
     "guid": "OrgPassFilter",
     "visualClassName": "OrganizationPasswordFilter",
-        "version": "1.0.6.0",
-        "description": "A login component that prompts for a password and filters data by organization on the current page. Supports admin password to view all data. Features both inline form and modal dialog modes. Can be triggered by visual's own button or Power BI buttons via filter. Note: Password does not persist across pages for end users (viewer mode). Best used in single-page dashboards or with Power BI Row-Level Security.",
+        "version": "2.1.0.0",
+        "description": "Password-based access control for public PowerBI dashboards with AES-256 encryption. Organization names are encrypted and stored securely in the visual code. Users enter password (which acts as decryption key) to unlock their organization's data. Supports admin access and modal/inline display modes. Much more secure than plaintext mappings. For enterprise security, use PowerBI Row-Level Security (RLS).",
     "supportUrl": "https://github.com",
     "gitHubUrl": ""
   },

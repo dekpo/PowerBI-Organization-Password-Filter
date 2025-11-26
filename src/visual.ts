@@ -3,71 +3,71 @@ import powerbi from "powerbi-visuals-api";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { VisualFormattingSettingsModel } from "./settings";
 import { PasswordModalDialog, PasswordModalDialogResult } from "./PasswordModalDialog";
+import * as CryptoJS from "crypto-js";
 
 import "./../style/visual.less";
 
-// Import types from powerbi-visuals-api
+// Import types
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
-import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
-import VisualObjectInstanceEnumeration = powerbi.VisualObjectInstanceEnumeration;
-import DataView = powerbi.DataView;
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
-import ISelectionId = powerbi.visuals.ISelectionId;
+import DataView = powerbi.DataView;
 import DialogAction = powerbi.DialogAction;
 import VisualDialogPositionType = powerbi.VisualDialogPositionType;
 
-// Interface for data points with identity and organization
-interface DataPoint {
-    identity: ISelectionId;
-    org: string;
-    [key: string]: any; // Allow other properties
-}
-
-// ViewModel to hold data points
-interface ViewModel {
-    dataPoints: DataPoint[];
-}
-
+/**
+ * Organization Password Filter Visual
+ * 
+ * PURPOSE: Provides password-based access control for public PowerBI dashboards
+ * where users don't have PowerBI accounts.
+ * 
+ * SECURITY MODEL (v2.1.0+): Uses AES-256 encryption
+ * - Organization names are encrypted with their passwords
+ * - No plaintext passwords or org names in the code
+ * - Password acts as decryption key - only correct password can decrypt the org
+ * - Much more secure than plaintext JSON mapping
+ * 
+ * IMPORTANT: Still client-side security (not military-grade)
+ * - Suitable for public dashboards with basic protection
+ * - Significantly raises the bar vs plaintext
+ * - For enterprise security, use PowerBI Row-Level Security (RLS)
+ */
 export class OrganizationPasswordFilter implements powerbi.extensibility.visual.IVisual {
     private host: IVisualHost;
-    private element: HTMLElement;
+    private container: HTMLElement;
     private formattingSettings!: VisualFormattingSettingsModel;
     private formattingSettingsService: FormattingSettingsService;
+    
+    // UI Elements
+    private titleLabel: HTMLDivElement;
+    private passwordSection: HTMLElement;
     private passwordInput: HTMLInputElement;
     private submitButton: HTMLButtonElement;
     private messageDiv: HTMLDivElement;
-    private titleLabel: HTMLDivElement;
-    private currentOrganization: string | null = null;
-    private allData: any[] = [];
-    private viewModel: ViewModel = { dataPoints: [] };
-    private currentDataView: DataView | null = null;
+    private modalStatusDiv: HTMLDivElement | null = null;
     
-    // Modal mode UI elements
-    private container: HTMLElement;
-    private passwordSection: HTMLElement;
-    private modalLoginButton: HTMLButtonElement | null = null;
-    private loggedInStatusDiv: HTMLDivElement | null = null;
-    private modalTriggered: boolean = false; // Track if modal was triggered to prevent multiple opens
+    // State
+    private currentOrganization: string | null = null;
+    private currentDataView: DataView | null = null;
+    private encryptedMappings: Array<{ e: string }> = [];
 
     constructor(options?: VisualConstructorOptions) {
         if (!options) {
             throw new Error("VisualConstructorOptions is required");
         }
         this.host = options.host;
-        this.element = options.element;
         this.formattingSettingsService = new FormattingSettingsService();
         
-        // Create container
+        // Create main container
         this.container = document.createElement("div");
         this.container.className = "passwordFilterContainer";
         
-        // Create title label
+        // Create title
         this.titleLabel = document.createElement("div");
         this.titleLabel.className = "titleLabel";
-        this.titleLabel.textContent = "Login"; // Default title
+        this.titleLabel.textContent = "Organization Login";
         
-        // Create password input section
+        // Create password section (inline form)
         this.passwordSection = document.createElement("div");
         this.passwordSection.className = "passwordSection";
         
@@ -89,496 +89,287 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         
         this.container.appendChild(this.titleLabel);
         this.container.appendChild(this.passwordSection);
+        options.element.appendChild(this.container);
         
-        this.element.appendChild(this.container);
-        
-        // Hide Power BI's default title/header (shows column name like "Organization")
-        this.hidePowerBITitle();
-        
-        // Add event listeners
+        // Event listeners
         this.submitButton.addEventListener("click", () => this.handlePasswordSubmit());
         this.passwordInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") {
-                this.handlePasswordSubmit();
-            }
+            if (e.key === "Enter") this.handlePasswordSubmit();
         });
-
     }
 
     public update(options: VisualUpdateOptions) {
-        this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, options.dataViews);
+        // Load settings
+        this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(
+            VisualFormattingSettingsModel, 
+            options.dataViews
+        );
         
-        // Update title label from settings
-        const title = this.formattingSettings?.general?.title?.value || "Login";
-        if (this.titleLabel) {
-            this.titleLabel.textContent = title;
-        }
+        // Update title
+        const title = this.formattingSettings?.general?.title?.value || "Organization Login";
+        this.titleLabel.textContent = title;
         
-        const dataView: DataView = options.dataViews[0];
+        // Load encrypted mappings from settings
+        this.loadEncryptedMappings();
+        
+        // Store dataView
+        const dataView = options.dataViews?.[0];
         if (!dataView || !dataView.table) {
-            // Block all data access if no data view
             this.blockAllData();
             return;
         }
-        
-        // Store dataView for filter operations (needed for password validation)
         this.currentDataView = dataView;
-
-        // CRITICAL: Check if filter is already applied BEFORE blocking data
-        // This allows us to detect filters that persist across pages
-        let existingFilterOrg: string | null = null;
-        if (dataView.table && dataView.table.rows && dataView.table.rows.length > 0) {
-            const orgColIndex = dataView.table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName.includes("organization") || colName.includes("org");
-            });
-            if (orgColIndex >= 0) {
-                const filteredOrgs = new Set<string>();
-                dataView.table.rows.forEach((row: any) => {
-                    const orgValue = String(row[orgColIndex] || "").trim();
-                    if (orgValue) filteredOrgs.add(orgValue);
-                });
-                // If only ONE organization is shown, a filter is likely active
-                if (filteredOrgs.size === 1) {
-                    existingFilterOrg = Array.from(filteredOrgs)[0];
-                }
-            }
-        }
-
-        // Strategy 1: Try to restore password from persisted properties (check ALL locations)
-        // NOTE: This only works if visuals are synchronized OR if it's the same visual instance
-        let passwordRestored = this.restorePasswordFromProperties(options);
-
-        // Strategy 2: If we detected an existing filter, restore password from it immediately
-        if (!passwordRestored && existingFilterOrg && this.formattingSettings) {
-            const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
-                this.getDefaultPasswordMapping();
-            let passwordMapping: { [key: string]: string };
-            try {
-                passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
-            } catch (e) {
-                passwordMapping = this.getDefaultPasswordMapping();
-            }
-            // Find password that maps to this organization
-            for (const [password, org] of Object.entries(passwordMapping)) {
-                if (org === existingFilterOrg) {
-                    this.passwordInput.value = password;
-                    this.currentOrganization = existingFilterOrg;
-                    passwordRestored = true;
-                    break;
-                }
-            }
+        
+        // Check display mode
+        const useModalMode = this.formattingSettings?.general?.useModalMode?.value === true;
+        
+        if (useModalMode) {
+            this.renderModalMode();
+        } else {
+            this.renderInlineMode();
         }
         
-        // Strategy 3: If still no password, try filter state detection (fallback)
-        if (!passwordRestored && this.formattingSettings) {
-            passwordRestored = this.restorePasswordFromFilter(dataView);
-        }
-        
-        // Strategy 4: If still no password, try again after a short delay (filter might not be applied yet)
-        // This handles race conditions where filter hasn't been applied when visual loads
-        if (!passwordRestored && this.formattingSettings) {
-            setTimeout(() => {
-                if (!this.passwordInput.value.trim()) {
-                    const retryRestored = this.restorePasswordFromFilter(dataView);
-                    if (retryRestored && this.passwordInput.value.trim()) {
-                        const retryPassword = this.passwordInput.value.trim();
-                        this.validateAndApplyPassword(retryPassword, true);
-                    }
-                }
-            }, 500); // Wait 500ms for filter to be applied
-        }
-
-        // If password was restored, validate and apply it immediately (synchronously)
-        // This ensures currentOrganization is set before we check it below
-        if (passwordRestored && this.passwordInput && this.passwordInput.value.trim()) {
-            const restoredPassword = this.passwordInput.value.trim();
-            this.validateAndApplyPassword(restoredPassword, true);
-        }
-
-        // Extract data from dataView
-        const table = dataView.table;
-        const rows = table.rows;
-        
-        if (!rows || rows.length === 0) {
-            // Block all data access if no rows
-            this.blockAllData();
-            return;
-        }
-
-        // Get column names
-        const columns = table.columns.map((col: any) => col.displayName || col.queryName);
-        
-        // Store all data and build dataPoints with identities
-        this.allData = rows.map((row: any) => {
-            const rowData: any = {};
-            columns.forEach((col: string, index: number) => {
-                rowData[col] = row[index];
-            });
-            return rowData;
-        });
-
-        // Find organization column index first
-        const orgColIndex = table.columns.findIndex((col: any) => {
-            const colName = (col.displayName || col.queryName || "").toLowerCase();
-            return colName.includes("organization") || colName.includes("org");
-        });
-
-        // Build dataPoints with identities for selection manager
-        this.viewModel.dataPoints = rows.map((row: any, index: number) => {
-            // Get organization value
-            const orgValue = orgColIndex >= 0 ? String(row[orgColIndex] || "") : "";
-            
-            // Create selection ID using selectionIdBuilder
-            // For table data, we can use withTable or create based on row index
-            const selectionIdBuilder = this.host.createSelectionIdBuilder();
-            let identity: ISelectionId;
-            
-            // Try to use table identity if available (Power BI provides this)
-            if (table.identity && table.identity[index]) {
-                // Convert CustomVisualOpaqueIdentity to ISelectionId if needed
-                // In Power BI, table.identity can be used directly with selection manager
-                identity = table.identity[index] as any as ISelectionId;
-            } else {
-                // Build identity using withTable - this creates an identity for a table row
-                // We use the table metadata and row index
-                if (orgColIndex >= 0 && table.columns[orgColIndex]) {
-                    // Use withTable to create identity based on table structure
-                    selectionIdBuilder.withTable(table, index);
-                    identity = selectionIdBuilder.createSelectionId();
-                } else {
-                    // Fallback: create a basic selection ID
-                    identity = selectionIdBuilder.createSelectionId();
-                }
-            }
-            
-            return {
-                identity: identity,
-                org: orgValue,
-                ...this.allData[index]
-            };
-        });
-
-        // Fallback: Trigger auto-submit if password exists but wasn't validated yet
-        // This handles edge cases where immediate validation might have failed
-        this.triggerAutoSubmitIfNeeded();
-
-        // Check display mode and handle modal mode
-        try {
-            const displayMode = this.getDisplayMode();
-            
-            if (displayMode === "modal") {
-                // Modal mode: Check for Power BI button trigger
-                const showModalFilter = this.detectShowLoginModalFilter(dataView);
-                
-                if (showModalFilter && !this.modalTriggered) {
-                    // Power BI button triggered modal - open it
-                    this.modalTriggered = true;
-                    setTimeout(() => {
-                        this.openPasswordModal();
-                        this.clearShowLoginModalFilter();
-                        this.modalTriggered = false;
-                    }, 100);
-                }
-                
-                // Render modal mode UI (button or logged-in status)
-                this.renderModalModeUI();
-            } else {
-                // Inline mode: Show/hide form based on login state
-                this.renderInlineModeUI();
-            }
-        } catch (error) {
-            // Fallback to inline mode on error
-            if (this.passwordSection) {
-                this.passwordSection.style.display = "flex";
-            }
-        }
-
-        // CRITICAL: Block all data access if no password has been entered
+        // Apply filtering based on current state
         if (!this.currentOrganization) {
+            // No password entered - block all data
             this.blockAllData();
         } else if (this.currentOrganization === "ADMIN") {
-            // Admin mode - clear all filters to show all data
+            // Admin access - show all data
             this.clearFilter();
         } else {
-            // Apply filter for the current organization
-            // IMPORTANT: Re-apply filter on every page load to ensure it persists
-            // Power BI filters might not persist across pages, so we re-apply them
+            // Normal user - filter to their organization
             this.applyFilter(this.currentOrganization);
         }
     }
 
-    private handlePasswordSubmit() {
+    /**
+     * Load encrypted mappings from settings
+     * Parses the JSON array of encrypted organization names
+     */
+    private loadEncryptedMappings(): void {
+        const encryptedJSON = this.formattingSettings?.security?.encryptedMappings?.value?.trim();
+        
+        if (!encryptedJSON) {
+            // No mappings configured - use empty array
+            this.encryptedMappings = [];
+            return;
+        }
+        
+        try {
+            const parsed = JSON.parse(encryptedJSON);
+            if (Array.isArray(parsed)) {
+                this.encryptedMappings = parsed;
+            } else {
+                this.showMessage("Invalid encrypted mappings format", "error");
+                this.encryptedMappings = [];
+            }
+        } catch (error) {
+            this.showMessage("Error parsing encrypted mappings", "error");
+            this.encryptedMappings = [];
+        }
+    }
+
+    /**
+     * Find organization by attempting to decrypt encrypted mappings with the password
+     * Uses AES-256 encryption - password acts as the decryption key
+     * Returns organization name if decryption succeeds, null otherwise
+     */
+    private findOrganizationByPassword(password: string): string | null {
+        if (this.encryptedMappings.length === 0) {
+            this.showMessage("No password mappings configured", "error");
+            return null;
+        }
+        for (const mapping of this.encryptedMappings) {
+            try {
+                // Try to decrypt the encrypted organization name with the password
+                const decrypted = CryptoJS.AES.decrypt(mapping.e, password).toString(CryptoJS.enc.Utf8);
+                
+                // Validate it's a real organization name (not garbage from wrong password)
+                // Valid org names: letters, spaces, hyphens (e.g., "UN-HABITAT", "UN Secretariat")
+                if (decrypted && decrypted.length > 0 && /^[A-Z\s\-]+$/i.test(decrypted)) {
+                    return decrypted; // Successfully decrypted! This is the organization
+                }
+            } catch {
+                // Decryption failed or invalid, try next mapping
+                continue;
+            }
+        }
+        
+        return null; // No matching organization found
+    }
+
+    /**
+     * Handle password submission
+     */
+    private handlePasswordSubmit(): void {
         const password = this.passwordInput.value.trim();
         
         if (!password) {
             this.showMessage("Please enter a password", "error");
             this.currentOrganization = null;
-            // Block all data access when password is empty
             this.blockAllData();
-            // Clear persisted password when empty
-            this.savePasswordToProperties("");
             return;
         }
-
-        // CRITICAL: Save password FIRST before validation
-        // This ensures it's persisted even if validation fails
-        this.savePasswordToProperties(password);
         
-        // Validate and apply password (with messages)
-        this.validateAndApplyPassword(password, false);
+        // Check admin password first
+        const adminPassword = this.formattingSettings?.security?.adminPassword?.value?.trim();
+        if (adminPassword && password === adminPassword) {
+            this.currentOrganization = "ADMIN";
+            this.showMessage("Admin access granted - viewing all organizations", "success");
+            this.clearFilter();
+            this.updateModalStatus();
+            return;
+        }
         
-        // Force Power BI to persist by triggering a visual update
-        // This ensures the persisted properties are saved to the report
-        if (this.currentDataView) {
-            // Re-trigger update to ensure persistence
-            setTimeout(() => {
-                this.savePasswordToProperties(password);
-            }, 100);
+        // Try to decrypt and find organization with the password
+        const organization = this.findOrganizationByPassword(password);
+        if (organization) {
+            this.currentOrganization = organization;
+            this.showMessage(`Access granted - viewing ${organization}`, "success");
+            this.applyFilter(organization);
+            this.updateModalStatus();
+        } else {
+            this.showMessage("Invalid password", "error");
+            this.currentOrganization = null;
+            this.blockAllData();
         }
     }
 
-    private getDefaultPasswordMapping(): { [key: string]: string } {
-        return {
-            "FAO123": "FAO",
-            "UNICEF123": "UNICEF",
-            "UNHCR123": "UNHCR",
-            "WHO123": "WHO",
-            "WIPO123": "WIPO"
-        };
-    }
-
-    private blockAllData() {
+    /**
+     * Block all data access (apply empty filter)
+     */
+    private blockAllData(): void {
         try {
-            if (!this.currentDataView || !this.currentDataView.table) {
-                // If no data view, try to apply a blocking filter anyway
-                // This will prevent any data from showing
-                const blockingFilter: any = {
-                    $schema: "http://powerbi.com/product/schema#basic",
-                    target: {},
-                    operator: "None"
-                };
-                this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
-                return;
-            }
-
-            // Find organization column
-            const table = this.currentDataView.table;
-            const orgColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName.includes("organization") || colName.includes("org");
-            });
-
-            if (orgColIndex < 0) {
-                // If no organization column, apply a blocking filter
-                const blockingFilter: any = {
-                    $schema: "http://powerbi.com/product/schema#basic",
-                    target: {},
-                    operator: "None"
-                };
-                this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
-                return;
-            }
-
-            const orgColumn = table.columns[orgColIndex];
-            const queryName = orgColumn.queryName || orgColumn.displayName;
-            const tableName = queryName.split('.')[0] || queryName;
-            const columnName = queryName.split('.').pop() || orgColumn.displayName;
+            if (!this.currentDataView?.table) return;
             
-            // Apply a filter that matches NO organizations (empty array)
-            // This will block all data from being displayed
-            const blockingFilter: any = {
-                $schema: "http://powerbi.com/product/schema#basic",
+            const table = this.currentDataView.table;
+            const orgColumn = this.findOrganizationColumn(table);
+            
+            if (!orgColumn) return;
+            
+            const filterJson = {
+                $schema: "https://powerbi.com/product/schema#basic",
                 target: {
-                    table: tableName,
-                    column: columnName
+                    table: orgColumn.table,
+                    column: orgColumn.column
                 },
                 operator: "In",
-                values: [] // Empty array means no data matches
+                values: [] // Empty array = no data matches
             };
-
-            this.host.applyJsonFilter(blockingFilter, "general", "filter", powerbi.FilterAction.merge);
             
-            // Apply PasswordValid filter (set to "0" for invalid)
-            this.applyPasswordValidFilter(false);
-            
-        } catch (error: any) {
-            // Error blocking data - silently fail
+            this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
+        } catch (error) {
+            // Silently fail
         }
     }
 
-    private applyFilter(organization: string) {
+    /**
+     * Apply filter to show only specified organization
+     */
+    private applyFilter(organization: string): void {
         try {
-            if (!this.currentDataView || !this.currentDataView.table) {
-                this.showMessage("No data view available for filtering", "error");
-                return;
-            }
-
-            // Find organization column
+            if (!this.currentDataView?.table) return;
+            
             const table = this.currentDataView.table;
-            const orgColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName.includes("organization") || colName.includes("org");
-            });
-
-            if (orgColIndex < 0) {
+            const orgColumn = this.findOrganizationColumn(table);
+            
+            if (!orgColumn) {
                 this.showMessage("Organization column not found", "error");
                 return;
             }
-
-            const orgColumn = table.columns[orgColIndex];
             
-            // Get the table name from metadata or use queryName
-            // The queryName typically contains the table name (e.g., "Table1.Organization")
-            const queryName = orgColumn.queryName || orgColumn.displayName;
-            const tableName = queryName.split('.')[0] || queryName;
-            const columnName = queryName.split('.').pop() || orgColumn.displayName;
-            
-            // Create a basic filter JSON
-            // This filter will be applied to all visuals using the same data source
-            const filterJson: any = {
-                $schema: "http://powerbi.com/product/schema#basic",
+            const filterJson = {
+                $schema: "https://powerbi.com/product/schema#basic",
                 target: {
-                    table: tableName,
-                    column: columnName
+                    table: orgColumn.table,
+                    column: orgColumn.column
                 },
                 operator: "In",
                 values: [organization]
             };
-
-            // Apply the filter globally using host.applyJsonFilter
-            // Use merge - this is the standard way to apply filters
+            
             this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
-            
-            // Apply PasswordValid filter (set to "1" for valid password)
-            this.applyPasswordValidFilter(true);
-            
-        } catch (error: any) {
-            const errorMsg = error?.message || String(error);
-            this.showMessage(`Filter error: ${errorMsg}`, "error");
+        } catch (error) {
+            this.showMessage("Error applying filter", "error");
         }
     }
 
     /**
-     * Apply PasswordValid filter (optional feature for button visibility)
-     * This is non-breaking - only works if PasswordValid column exists
+     * Clear filter to show all organizations (admin mode)
      */
-    private applyPasswordValidFilter(isValid: boolean) {
+    private clearFilter(): void {
         try {
-            if (!this.currentDataView || !this.currentDataView.table) {
-                return; // Silently fail if no data view
-            }
-
+            if (!this.currentDataView?.table) return;
+            
             const table = this.currentDataView.table;
+            const orgColumn = this.findOrganizationColumn(table);
             
-            // Find PasswordValid column (case-insensitive)
-            const passwordValidColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName === "passwordvalid" || colName === "password_valid";
-            });
-
-            // If column doesn't exist, silently return (non-breaking feature)
-            if (passwordValidColIndex < 0) {
-                return;
-            }
-
-            const passwordValidColumn = table.columns[passwordValidColIndex];
-            const queryName = passwordValidColumn.queryName || passwordValidColumn.displayName;
-            const tableName = queryName.split('.')[0] || queryName;
-            const columnName = queryName.split('.').pop() || passwordValidColumn.displayName;
+            if (!orgColumn) return;
             
-            const filterValue = isValid ? "1" : "0";
-            
-            const filterJson: any = {
-                $schema: "http://powerbi.com/product/schema#basic",
-                target: {
-                    table: tableName,
-                    column: columnName
-                },
-                operator: "In",
-                values: [filterValue]
-            };
-
-            this.host.applyJsonFilter(filterJson, "passwordValid", "filter", powerbi.FilterAction.merge);
-            
-        } catch (error: any) {
-            // Silently fail - this is an optional feature
-        }
-    }
-
-    /**
-     * Clear all filters to show all data (admin mode)
-     */
-    private clearFilter() {
-        try {
-            if (!this.currentDataView || !this.currentDataView.table) {
-                return;
-            }
-
-            // Find organization column
-            const table = this.currentDataView.table;
-            const orgColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName.includes("organization") || colName.includes("org");
-            });
-
-            if (orgColIndex < 0) {
-                // Remove filter by passing empty array
-                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
-                return;
-            }
-
-            const orgColumn = table.columns[orgColIndex];
-            const queryName = orgColumn.queryName || orgColumn.displayName;
-            const tableName = queryName.split('.')[0] || queryName;
-            const columnName = queryName.split('.').pop() || orgColumn.displayName;
-            
-            // Get all unique organization values to create a filter that includes everything
-            const uniqueOrgs = new Set<string>();
-            if (table.rows) {
-                table.rows.forEach((row: any) => {
-                    const orgValue = String(row[orgColIndex] || "").trim();
-                    if (orgValue) {
-                        uniqueOrgs.add(orgValue);
-                    }
-                });
-            }
-            
-            const allOrgs = Array.from(uniqueOrgs);
+            // Get all unique organizations
+            const allOrgs = this.getAllOrganizations(table);
             
             if (allOrgs.length > 0) {
-                // Create a filter that includes all organizations (effectively shows all data)
-                const filterJson: any = {
-                    $schema: "http://powerbi.com/product/schema#basic",
+                const filterJson = {
+                    $schema: "https://powerbi.com/product/schema#basic",
                     target: {
-                        table: tableName,
-                        column: columnName
+                        table: orgColumn.table,
+                        column: orgColumn.column
                     },
                     operator: "In",
                     values: allOrgs
                 };
                 
-                // Apply filter with all organizations
                 this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
-            } else {
-                // If no organizations found, remove the filter
-                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
             }
-            
-            // Apply PasswordValid filter (set to "1" for admin access)
-            this.applyPasswordValidFilter(true);
-            
-        } catch (error: any) {
-            // Try alternative method: remove filter with empty array
-            try {
-                this.host.applyJsonFilter([], "general", "filter", powerbi.FilterAction.remove);
-            } catch (e) {
-                // Failed to clear filter - silently fail
-            }
+        } catch (error) {
+            // Silently fail
         }
     }
 
-    private showMessage(message: string, type: "success" | "error") {
+    /**
+     * Find organization column in table
+     */
+    private findOrganizationColumn(table: any): { table: string; column: string } | null {
+        const orgColIndex = table.columns.findIndex((col: any) => {
+            const name = (col.displayName || col.queryName || "").toLowerCase();
+            return name.includes("organization") || name.includes("org");
+        });
+        
+        if (orgColIndex < 0) return null;
+        
+        const orgColumn = table.columns[orgColIndex];
+        const queryName = orgColumn.queryName || orgColumn.displayName;
+        const tableName = queryName.split('.')[0] || queryName;
+        const columnName = queryName.split('.').pop() || orgColumn.displayName;
+        
+        return { table: tableName, column: columnName };
+    }
+
+    /**
+     * Get all unique organizations from table
+     */
+    private getAllOrganizations(table: any): string[] {
+        const orgColIndex = table.columns.findIndex((col: any) => {
+            const name = (col.displayName || col.queryName || "").toLowerCase();
+            return name.includes("organization") || name.includes("org");
+        });
+        
+        if (orgColIndex < 0) return [];
+        
+        const orgs = new Set<string>();
+        table.rows?.forEach((row: any) => {
+            const orgValue = String(row[orgColIndex] || "").trim();
+            if (orgValue) orgs.add(orgValue);
+        });
+        
+        return Array.from(orgs);
+    }
+
+    /**
+     * Show message to user
+     */
+    private showMessage(message: string, type: "success" | "error"): void {
         this.messageDiv.textContent = message;
         this.messageDiv.className = `messageDiv ${type}`;
         
@@ -590,446 +381,83 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         }
     }
 
-    public getFormattingModel(): powerbi.visuals.FormattingModel {
-        return this.formattingSettingsService.buildFormattingModel(this.formattingSettings);
-    }
-
-    public enumerateObjectInstances(
-        _options: EnumerateVisualObjectInstancesOptions
-    ): VisualObjectInstanceEnumeration {
-        // FormattingSettingsService doesn't have enumerateObjectInstances in this version
-        // Return empty enumeration - formatting is handled via getFormattingModel
-        return [];
-    }
-
     /**
-     * Save password using persistProperties (works during editing/design mode for synchronized visuals)
+     * Render inline mode (form always visible)
      */
-    private savePasswordToProperties(password: string): void {
-        // Save via persistProperties (for editing mode with synchronized visuals)
-        try {
-            this.host.persistProperties({
-                merge: [{
-                    objectName: "passwordSettings",
-                    properties: {
-                        savedPassword: password
-                    },
-                    selector: null as any
-                }]
-            });
-        } catch (error) {
-            // persistProperties failed - silently fail
-        }
-    }
-
-    /**
-     * Restore password from persistProperties (for editing mode with synchronized visuals)
-     * Returns true if a password was restored, false otherwise
-     */
-    private restorePasswordFromProperties(options: VisualUpdateOptions): boolean {
-        try {
-            if (!this.passwordInput) {
-                return false;
-            }
-
-            let persistedPassword = "";
-
-            // Try to read from Power BI's persisted properties
-            // Check ALL possible locations where properties might be stored
-            
-            if (options?.dataViews?.[0]) {
-                const dataView = options.dataViews[0];
-                
-                // Method 1: Read from metadata.objects.passwordSettings.savedPassword (standard way)
-                const objects = dataView?.metadata?.objects;
-                if (objects?.passwordSettings) {
-                    persistedPassword = (objects.passwordSettings as any)?.savedPassword as string || "";
-                }
-                
-                // Method 2: Check metadata.objects directly (alternative structure)
-                if (!persistedPassword && (dataView.metadata as any)?.objects?.passwordSettings) {
-                    persistedPassword = ((dataView.metadata as any).objects.passwordSettings as any)?.savedPassword as string || "";
-                }
-                
-                // Method 3: Check if properties are stored at the root level of objects
-                if (!persistedPassword && objects) {
-                    // Sometimes properties are stored directly in objects
-                    for (const key in objects) {
-                        if (objects[key] && (objects[key] as any).savedPassword) {
-                            persistedPassword = (objects[key] as any).savedPassword as string || "";
-                            break;
-                        }
-                    }
-                }
-                
-                // Method 4: Check dataView.metadata directly (deep fallback)
-                if (!persistedPassword) {
-                    const metadata = dataView.metadata as any;
-                    if (metadata?.objects) {
-                        // Try all possible nested structures
-                        const checkNested = (obj: any): string => {
-                            if (!obj || typeof obj !== "object") return "";
-                            if (obj.savedPassword && typeof obj.savedPassword === "string") {
-                                return obj.savedPassword;
-                            }
-                            for (const key in obj) {
-                                const result = checkNested(obj[key]);
-                                if (result) return result;
-                            }
-                            return "";
-                        };
-                        persistedPassword = checkNested(metadata.objects);
-                    }
-                }
-            }
-            
-            // Method 5: Try to get from host directly (if available)
-            if (!persistedPassword && (this.host as any).getPersistedProperties) {
-                try {
-                    const persisted = (this.host as any).getPersistedProperties();
-                    if (persisted?.passwordSettings?.savedPassword) {
-                        persistedPassword = persisted.passwordSettings.savedPassword;
-                    }
-                } catch (e) {
-                    // Method not available, ignore
-                }
-            }
-            
-            // If we found a persisted password, restore it
-            if (persistedPassword && persistedPassword.trim()) {
-                const currentValue = this.passwordInput.value.trim();
-                if (!currentValue || currentValue !== persistedPassword) {
-                    this.passwordInput.value = persistedPassword;
-                    return true;
-                } else {
-                    return true;
-                }
-            }
-            
-            return false;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    /**
-     * Restore password by checking if a filter is already applied
-     * This works because filters persist across pages, so we can reverse-engineer the password
-     * Returns true if password was restored, false otherwise
-     */
-    private restorePasswordFromFilter(dataView: DataView): boolean {
-        try {
-            if (!this.passwordInput || !dataView?.table || !this.formattingSettings) {
-                return false;
-            }
-
-            // Check if there's already a filter applied by examining the data
-            // If data is filtered, we can determine which organization is shown
-            const table = dataView.table;
-            const orgColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName.includes("organization") || colName.includes("org");
-            });
-
-            if (orgColIndex < 0) {
-                return false;
-            }
-
-            if (!table.rows || table.rows.length === 0) {
-                return false;
-            }
-
-            // Get unique organization values from the filtered data
-            const filteredOrgs = new Set<string>();
-            table.rows.forEach((row: any) => {
-                const orgValue = String(row[orgColIndex] || "").trim();
-                if (orgValue) {
-                    filteredOrgs.add(orgValue);
-                }
-            });
-
-            // Get password mapping
-            const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
-                this.getDefaultPasswordMapping();
-            
-            let passwordMapping: { [key: string]: string };
-            try {
-                passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
-            } catch (e) {
-                passwordMapping = this.getDefaultPasswordMapping();
-            }
-
-            // If only one organization is shown, we can reverse-engineer the password
-            if (filteredOrgs.size === 1) {
-                const filteredOrg = Array.from(filteredOrgs)[0];
-                
-                // Find password that maps to this organization
-                for (const [password, org] of Object.entries(passwordMapping)) {
-                    if (org === filteredOrg) {
-                        // Found the password! Restore it
-                        const currentValue = this.passwordInput.value.trim();
-                        if (!currentValue || currentValue !== password) {
-                            this.passwordInput.value = password;
-                            this.currentOrganization = filteredOrg;
-                            return true;
-                        } else {
-                            this.currentOrganization = filteredOrg;
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            return false;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    /**
-     * Trigger auto-submit if password was restored (called after dataView is ready)
-     * This is a fallback method - password validation should happen immediately in update()
-     */
-    private triggerAutoSubmitIfNeeded(): void {
-        try {
-            if (this.passwordInput && this.currentDataView && this.currentDataView.table) {
-                const password = this.passwordInput.value.trim();
-                // Only trigger if password exists but currentOrganization is not set
-                // This handles edge cases where immediate validation might have failed
-                if (password && !this.currentOrganization) {
-                    setTimeout(() => {
-                        this.validateAndApplyPassword(password, true);
-                    }, 100);
-                }
-            }
-        } catch (error) {
-            // Failed to trigger auto-submit - silently fail
-        }
-    }
-
-
-    /**
-     * Hide Power BI's default visual title/header
-     */
-    private hidePowerBITitle(): void {
-        try {
-            // Power BI adds a title element as a sibling or parent of our visual element
-            // Try to find and hide it
-            let currentElement: HTMLElement | null = this.element.parentElement;
-            let attempts = 0;
-            const maxAttempts = 5;
-            
-            while (currentElement && attempts < maxAttempts) {
-                // Look for common Power BI title elements
-                const titleElements = currentElement.querySelectorAll(
-                    '[class*="title"], [class*="header"], [class*="titleText"], [class*="visualTitle"]'
-                );
-                
-                titleElements.forEach((el: Element) => {
-                    const htmlEl = el as HTMLElement;
-                    // Only hide if it's not our custom title
-                    if (!htmlEl.classList.contains('titleLabel')) {
-                        htmlEl.style.display = 'none';
-                    }
-                });
-                
-                // Also check for text nodes that might be the title
-                const textContent = currentElement.textContent || '';
-                if (textContent.trim() && currentElement !== this.element && 
-                    !currentElement.contains(this.element)) {
-                    // Check if this might be a title container
-                    const children = Array.from(currentElement.children);
-                    if (children.length === 1 && children[0] === this.element) {
-                        // This might be a wrapper, check siblings
-                        const siblings = Array.from(currentElement.parentElement?.children || []);
-                        siblings.forEach((sibling: Element) => {
-                            if (sibling !== currentElement && sibling.textContent) {
-                                const siblingEl = sibling as HTMLElement;
-                                if (siblingEl.textContent?.trim() && 
-                                    !siblingEl.contains(this.element)) {
-                                    siblingEl.style.display = 'none';
-                                }
-                            }
-                        });
-                    }
-                }
-                
-                currentElement = currentElement.parentElement;
-                attempts++;
-            }
-            
-            // Also use MutationObserver to catch dynamically added titles
-            if (this.element.parentElement) {
-                const observer = new MutationObserver((mutations) => {
-                    mutations.forEach((mutation) => {
-                        mutation.addedNodes.forEach((node) => {
-                            if (node.nodeType === 1) { // Element node
-                                const el = node as HTMLElement;
-                                if (el.querySelector && 
-                                    (el.querySelector('[class*="title"]') || 
-                                     el.querySelector('[class*="header"]'))) {
-                                    const titleEls = el.querySelectorAll('[class*="title"], [class*="header"]');
-                                    titleEls.forEach((titleEl: Element) => {
-                                        const htmlEl = titleEl as HTMLElement;
-                                        if (!htmlEl.classList.contains('titleLabel')) {
-                                            htmlEl.style.display = 'none';
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    });
-                });
-                
-                observer.observe(this.element.parentElement, {
-                    childList: true,
-                    subtree: true
-                });
-            }
-        } catch (error) {
-            // Failed to hide Power BI title - silently fail
-        }
-    }
-
-    /**
-     * Validate password and apply filter (used for auto-submit)
-     */
-    private validateAndApplyPassword(password: string, silent: boolean = false): void {
-        // First check if it's the admin password
-        const adminPassword = this.formattingSettings?.filterSettings?.adminPassword?.value?.trim() || "";
+    private renderInlineMode(): void {
+        this.titleLabel.style.display = "block";
+        this.passwordSection.style.display = "flex";
         
-        if (adminPassword && password === adminPassword) {
-            // Admin password matched - show all data without filtering
-            this.currentOrganization = "ADMIN"; // Special marker for admin mode
-            if (!silent) {
-                this.showMessage("Admin access granted - showing all data", "success");
-            }
-            // Clear all filters to show all data (this will also set PasswordValid to "1")
-            this.clearFilter();
-            return;
+        if (this.modalStatusDiv && this.modalStatusDiv.parentNode) {
+            this.modalStatusDiv.parentNode.removeChild(this.modalStatusDiv);
+            this.modalStatusDiv = null;
         }
+    }
 
-        // Get organization mapping from settings or use default
-        const mappingJson = this.formattingSettings?.filterSettings?.organizationMapping?.value || 
-            this.getDefaultPasswordMapping();
+    /**
+     * Render modal mode (button to open form in popup)
+     */
+    private renderModalMode(): void {
+        this.titleLabel.style.display = "none";
+        this.passwordSection.style.display = "none";
         
-        let passwordMapping: { [key: string]: string };
-        try {
-            passwordMapping = typeof mappingJson === "string" ? JSON.parse(mappingJson) : mappingJson;
-        } catch (e) {
-            passwordMapping = this.getDefaultPasswordMapping();
+        // Remove existing status div
+        if (this.modalStatusDiv && this.modalStatusDiv.parentNode) {
+            this.modalStatusDiv.parentNode.removeChild(this.modalStatusDiv);
         }
-
-        // Check password and get organization
-        const organization = passwordMapping[password];
         
-        if (organization) {
-            this.currentOrganization = organization;
-            if (!silent) {
-                this.showMessage("Access granted", "success");
-            }
-            // Apply filter to Power BI globally (this will also set PasswordValid to "1")
-            this.applyFilter(organization);
-        } else if (!silent) {
-            this.showMessage("Invalid password", "error");
-            this.currentOrganization = null;
-            // Block all data (this will also set PasswordValid to "0")
-            this.blockAllData();
+        // Create status div
+        this.modalStatusDiv = document.createElement("div");
+        this.modalStatusDiv.className = this.currentOrganization ? "loggedInStatus" : "loginRequiredStatus";
+        
+        if (this.currentOrganization) {
+            // Logged in - show status
+            const orgDisplay = this.currentOrganization === "ADMIN" ? "Admin (All Organizations)" : this.currentOrganization;
+            
+            const statusText = document.createElement("div");
+            statusText.style.cssText = "color: #2e7d32; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px;";
+            const checkmark = document.createElement("span");
+            checkmark.textContent = "✓";
+            checkmark.style.cssText = "color: #2e7d32; font-size: 14px; font-weight: bold;";
+            statusText.appendChild(checkmark);
+            statusText.appendChild(document.createTextNode(` Logged in as: ${orgDisplay}`));
+            
+            const changeButton = document.createElement("button");
+            changeButton.textContent = "Change Password";
+            changeButton.className = "changePasswordButton";
+            changeButton.onclick = () => this.openPasswordModal();
+            
+            this.modalStatusDiv.appendChild(statusText);
+            this.modalStatusDiv.appendChild(changeButton);
+        } else {
+            // Not logged in - show login button
+            const statusText = document.createElement("div");
+            statusText.style.cssText = "color: #e65100; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px;";
+            const crossIcon = document.createElement("span");
+            crossIcon.textContent = "✗";
+            crossIcon.style.cssText = "color: #e65100; font-size: 14px; font-weight: bold;";
+            statusText.appendChild(crossIcon);
+            statusText.appendChild(document.createTextNode(" Login Required"));
+            
+            const loginButton = document.createElement("button");
+            loginButton.textContent = "Enter Password";
+            loginButton.className = "enterPasswordButton";
+            loginButton.onclick = () => this.openPasswordModal();
+            
+            this.modalStatusDiv.appendChild(statusText);
+            this.modalStatusDiv.appendChild(loginButton);
         }
+        
+        this.container.appendChild(this.modalStatusDiv);
     }
 
     /**
-     * Helper function to get display mode as string
+     * Update modal status (after password change)
      */
-    private getDisplayMode(): string {
-        try {
-            if (!this.formattingSettings || !this.formattingSettings.general) {
-                return "inline";
-            }
-            const useModalMode = this.formattingSettings.general.useModalMode?.value;
-            // ToggleSwitch returns boolean, so just check for true
-            if (useModalMode === true) {
-                return "modal";
-            }
-            return "inline";
-        } catch (error) {
-            return "inline";
-        }
-    }
-
-    /**
-     * Detect if ShowLoginModal filter is set (Power BI button trigger)
-     */
-    private detectShowLoginModalFilter(dataView: DataView): boolean {
-        try {
-            if (!dataView?.table) {
-                return false;
-            }
-
-            const table = dataView.table;
-            
-            // Find ShowLoginModal column (case-insensitive)
-            const modalColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName === "showloginmodal" || colName === "show_login_modal";
-            });
-
-            if (modalColIndex < 0) {
-                return false; // Column doesn't exist - silently return
-            }
-
-            // Check if filter shows "1" (meaning modal should open)
-            if (table.rows && table.rows.length > 0) {
-                const filterValue = String(table.rows[0][modalColIndex] || "0").trim();
-                return filterValue === "1";
-            }
-
-            return false;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    /**
-     * Clear ShowLoginModal filter after modal is opened
-     */
-    private clearShowLoginModalFilter(): void {
-        try {
-            if (!this.currentDataView?.table) {
-                return;
-            }
-
-            const table = this.currentDataView.table;
-            
-            // Find ShowLoginModal column
-            const modalColIndex = table.columns.findIndex((col: any) => {
-                const colName = (col.displayName || col.queryName || "").toLowerCase();
-                return colName === "showloginmodal" || colName === "show_login_modal";
-            });
-
-            if (modalColIndex < 0) {
-                return; // Column doesn't exist - silently return
-            }
-
-            const modalColumn = table.columns[modalColIndex];
-            const queryName = modalColumn.queryName || modalColumn.displayName;
-            const tableName = queryName.split('.')[0] || queryName;
-            const columnName = queryName.split('.').pop() || modalColumn.displayName;
-            
-            // Reset filter to "0"
-            const filterJson: any = {
-                $schema: "http://powerbi.com/product/schema#basic",
-                target: {
-                    table: tableName,
-                    column: columnName
-                },
-                operator: "In",
-                values: ["0"]
-            };
-
-            this.host.applyJsonFilter(filterJson, "general", "filter", powerbi.FilterAction.merge);
-        } catch (error) {
-            // Error clearing ShowLoginModal filter - silently fail
+    private updateModalStatus(): void {
+        const useModalMode = this.formattingSettings?.general?.useModalMode?.value === true;
+        if (useModalMode) {
+            this.renderModalMode();
         }
     }
 
@@ -1038,42 +466,28 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
      */
     private openPasswordModal(): void {
         try {
-            // Check if modal dialogs are allowed
             if (!this.host.hostCapabilities?.allowModalDialog) {
-                // Fallback to inline mode
-                this.renderInlineModeUI();
+                this.renderInlineMode();
                 return;
             }
 
-            const placeholder = "Enter password";
-            const buttonText = "Enter";
-
             const dialogOptions: any = {
-                title: "", // Empty title to avoid duplicate - Power BI shows visual name automatically
-                size: {
-                    width: 400,
-                    height: 250
-                },
-                position: {
-                    type: VisualDialogPositionType.Center
-                },
+                title: "",
+                size: { width: 400, height: 250 },
+                position: { type: VisualDialogPositionType.Center },
                 actionButtons: [DialogAction.OK, DialogAction.Cancel]
             };
 
             const initialState = {
-                placeholder: placeholder,
-                buttonText: buttonText
+                placeholder: "Enter password",
+                buttonText: "Enter"
             };
 
             this.host.openModalDialog(PasswordModalDialog.id, dialogOptions, initialState)
-                .then((result) => {
-                    this.handleModalResult(result);
-                })
-                .catch(() => {
-                    this.showMessage("Error opening login dialog", "error");
-                });
-        } catch {
-            this.showMessage("Error opening login dialog", "error");
+                .then((result) => this.handleModalResult(result))
+                .catch(() => this.showMessage("Error opening dialog", "error"));
+        } catch (error) {
+            this.showMessage("Error opening dialog", "error");
         }
     }
 
@@ -1086,224 +500,13 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             const password = dialogResult.password?.trim();
 
             if (password) {
-                // Set password in input (for consistency)
-                if (this.passwordInput) {
-                    this.passwordInput.value = password;
-                }
-                
-                // Validate and apply password
-                this.validateAndApplyPassword(password, false);
-                
-                // Update UI
-                const displayMode = this.getDisplayMode();
-                if (displayMode === "modal") {
-                    this.renderModalModeUI();
-                }
+                this.passwordInput.value = password;
+                this.handlePasswordSubmit();
             }
         }
     }
 
-    /**
-     * Render modal mode UI (button or logged-in status)
-     */
-    private renderModalModeUI(): void {
-        try {
-            if (!this.container) {
-                return;
-            }
-
-            const isLoggedIn = this.currentOrganization !== null;
-
-            // Hide title label in modal mode to save space
-            if (this.titleLabel) {
-                this.titleLabel.style.display = "none";
-            }
-
-            // Hide inline form in modal mode
-            if (this.passwordSection) {
-                this.passwordSection.style.display = "none";
-            }
-
-            // Remove existing modal UI elements
-            if (this.modalLoginButton && this.modalLoginButton.parentNode) {
-                this.modalLoginButton.parentNode.removeChild(this.modalLoginButton);
-                this.modalLoginButton = null;
-            }
-            if (this.loggedInStatusDiv && this.loggedInStatusDiv.parentNode) {
-                this.loggedInStatusDiv.parentNode.removeChild(this.loggedInStatusDiv);
-                this.loggedInStatusDiv = null;
-            }
-
-            if (isLoggedIn) {
-                // Show logged-in status - compact green rectangle
-                this.loggedInStatusDiv = document.createElement("div");
-                this.loggedInStatusDiv.className = "loggedInStatus";
-                this.loggedInStatusDiv.style.cssText = `
-                    padding: 10px 12px;
-                    background-color: #e8f5e9;
-                    border: 1px solid #4caf50;
-                    border-radius: 4px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                    align-items: center;
-                    box-sizing: border-box;
-                `;
-
-                const orgDisplay = this.currentOrganization === "ADMIN" ? "Admin" : this.currentOrganization;
-                
-                // Status text with green checkmark icon
-                const statusText = document.createElement("div");
-                statusText.style.cssText = `
-                    color: #2e7d32;
-                    font-size: 13px;
-                    font-weight: 500;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    margin: 0;
-                    line-height: 1.2;
-                `;
-                // Green checkmark icon
-                const checkmarkIcon = document.createElement("span");
-                checkmarkIcon.innerHTML = "✓";
-                checkmarkIcon.style.cssText = `
-                    color: #2e7d32;
-                    font-size: 14px;
-                    font-weight: bold;
-                `;
-                statusText.appendChild(checkmarkIcon);
-                statusText.appendChild(document.createTextNode(`Logged In as: ${orgDisplay}`));
-                this.loggedInStatusDiv.appendChild(statusText);
-
-                // Change password button - centered
-                const changePasswordBtn = document.createElement("button");
-                changePasswordBtn.className = "changePasswordButton";
-                changePasswordBtn.textContent = "Change Password";
-                changePasswordBtn.style.cssText = `
-                    padding: 6px 12px;
-                    background-color: #0078d4;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    transition: background-color 0.2s;
-                    margin: 0;
-                `;
-                changePasswordBtn.onmouseover = () => {
-                    changePasswordBtn.style.backgroundColor = "#106ebe";
-                };
-                changePasswordBtn.onmouseout = () => {
-                    changePasswordBtn.style.backgroundColor = "#0078d4";
-                };
-                changePasswordBtn.addEventListener("click", () => {
-                    this.openPasswordModal();
-                });
-                this.loggedInStatusDiv.appendChild(changePasswordBtn);
-
-                this.container.appendChild(this.loggedInStatusDiv);
-            } else {
-                // Show login required - compact red/orange rectangle
-                this.loggedInStatusDiv = document.createElement("div");
-                this.loggedInStatusDiv.className = "loginRequiredStatus";
-                this.loggedInStatusDiv.style.cssText = `
-                    padding: 10px 12px;
-                    background-color: #fff3e0;
-                    border: 1px solid #ff9800;
-                    border-radius: 4px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                    align-items: center;
-                    box-sizing: border-box;
-                `;
-
-                // Status text with orange cross icon
-                const statusText = document.createElement("div");
-                statusText.style.cssText = `
-                    color: #e65100;
-                    font-size: 13px;
-                    font-weight: 500;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    margin: 0;
-                    line-height: 1.2;
-                `;
-                // Orange cross icon
-                const crossIcon = document.createElement("span");
-                crossIcon.innerHTML = "✗";
-                crossIcon.style.cssText = `
-                    color: #e65100;
-                    font-size: 14px;
-                    font-weight: bold;
-                `;
-                statusText.appendChild(crossIcon);
-                statusText.appendChild(document.createTextNode("Login Required"));
-                this.loggedInStatusDiv.appendChild(statusText);
-
-                // Enter password button - centered
-                const enterPasswordBtn = document.createElement("button");
-                enterPasswordBtn.className = "enterPasswordButton";
-                enterPasswordBtn.textContent = "Enter Password";
-                enterPasswordBtn.style.cssText = `
-                    padding: 6px 12px;
-                    background-color: #ff9800;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    transition: background-color 0.2s;
-                    margin: 0;
-                `;
-                enterPasswordBtn.onmouseover = () => {
-                    enterPasswordBtn.style.backgroundColor = "#f57c00";
-                };
-                enterPasswordBtn.onmouseout = () => {
-                    enterPasswordBtn.style.backgroundColor = "#ff9800";
-                };
-                enterPasswordBtn.addEventListener("click", () => {
-                    this.openPasswordModal();
-                });
-                this.loggedInStatusDiv.appendChild(enterPasswordBtn);
-
-                this.container.appendChild(this.loggedInStatusDiv);
-            }
-        } catch (error) {
-            // Fallback to inline mode on error
-            if (this.passwordSection) {
-                this.passwordSection.style.display = "flex";
-            }
-        }
-    }
-
-    /**
-     * Render inline mode UI (show/hide form based on state)
-     */
-    private renderInlineModeUI(): void {
-        if (!this.passwordSection) {
-            return;
-        }
-
-        // Show title label in inline mode
-        if (this.titleLabel) {
-            this.titleLabel.style.display = "block";
-        }
-
-        // Show inline form
-        this.passwordSection.style.display = "flex";
-
-        // Remove modal UI elements if they exist
-        if (this.modalLoginButton && this.modalLoginButton.parentNode) {
-            this.modalLoginButton.parentNode.removeChild(this.modalLoginButton);
-            this.modalLoginButton = null;
-        }
-        if (this.loggedInStatusDiv && this.loggedInStatusDiv.parentNode) {
-            this.loggedInStatusDiv.parentNode.removeChild(this.loggedInStatusDiv);
-            this.loggedInStatusDiv = null;
-        }
+    public getFormattingModel(): powerbi.visuals.FormattingModel {
+        return this.formattingSettingsService.buildFormattingModel(this.formattingSettings);
     }
 }
-

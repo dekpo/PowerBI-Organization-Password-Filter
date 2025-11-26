@@ -1,341 +1,340 @@
-# Power BI Custom Visual: Login
+# PowerBI Organization Login Visual
 
-A custom Power BI visual that provides a login interface with password-based organization filtering. The visual allows users to enter a password and filters the data source based on the organization value.
+A custom PowerBI visual providing password-based access control for public dashboards using **AES-256 encryption**.
 
-**Visual Name in Power BI:** Login  
-**Package File:** `OrgPassFilter.1.0.6.0.pbiviz`  
-**Version:** 1.0.6.0
+**Version:** 2.1.0.0 (AES-256 Encrypted)
 
-## ⚠️ Important Limitations
+## 🔐 Security Model (v2.1.0+)
 
-**Password persistence does NOT work across multiple pages for end users (report viewers).** This is due to Power BI's architecture:
-- Custom visuals create isolated instances on each page
-- `persistProperties` only works for synchronized visuals (requires edit mode)
-- Filters applied via `applyJsonFilter` are page-level, not report-level
-- End users cannot synchronize visuals (viewer mode only)
+### **AES-256 Encryption**
+- Organization names are **encrypted with their passwords** using industry-standard AES-256
+- **No plaintext passwords** or organization names in the code
+- Password acts as **decryption key** - only correct password can unlock the org
+- **Much more secure** than plaintext JSON mappings
 
-**Recommended Use Cases:**
-1. **Single-page dashboard** - Place all content on one scrollable page (no page navigation)
-2. **Report editors only** - Password persistence works when visuals are synchronized in edit mode
-3. **Use Power BI Row-Level Security (RLS) instead** - Proper enterprise solution for organization-based filtering
+### **What This Provides:**
+✅ **Encrypted storage** - Org names encrypted in code  
+✅ **No visible passwords** - Can't see passwords by inspecting code  
+✅ **Raises the bar** - Requires crypto knowledge to break  
+✅ **Good for:** Anonymous access, public partner dashboards, basic protection  
+
+### **What This Doesn't Provide:**
+❌ **Not military-grade** - Still client-side (algorithm visible)  
+❌ **Not enterprise security** - Determined attackers with crypto expertise can analyze  
+❌ **Not for:** Compliance (GDPR/HIPAA), highly confidential data  
+
+**For enterprise security:** Use **PowerBI Row-Level Security (RLS)** with user authentication.
+
+---
+
+## Quick Start
+
+### 1. Build and Import Visual (One-Time)
+```bash
+npm install
+pbiviz package
+```
+Output: `dist/organizationPasswordFilter.2.1.0.0.pbiviz`
+
+Import to PowerBI Desktop:
+- **Get more visuals** → **Import from file**
+- Select the `.pbiviz` file
+
+### 2. Add Data
+- Drag visual to canvas
+- Add your data fields to **Data**
+- Add Organization column to **Organization**
+
+### 3. Configure Encrypted Passwords
+```bash
+node tools/encrypt-passwords.js
+```
+
+Copy the JSON output and paste into:
+- PowerBI → Select visual → **Format visual** → **Security Settings** → **Encrypted Mappings (JSON)**
+
+### 4. Test
+- Enter a password from your `OrgPass.csv` (e.g., `A7F9D2C4E1`)
+- Click **Enter**
+- Data should filter to that organization (e.g., FAO)
+
+**✨ Easy password updates:**
+- Edit `OrgPass.csv` → Run script → Copy JSON → Paste in PowerBI
+- **NO REBUILD NEEDED!**
+
+---
 
 ## Features
 
-- **Password-based filtering**: Enter a password to filter data by organization
-- **Admin password support**: Configure an admin password to view all data without organization filtering
-- **Secure password input**: True password field (characters hidden)
-- **Customizable title**: Change the component title/label via formatting options (default: "Login")
-- **Secure access control**: Different passwords unlock different organizations
-- **Page-level filtering**: Applies filters to all visuals on the current page
-- **Dynamic filtering**: Filters are applied to the Power BI data model in real-time
-- **Customizable password mapping**: Configure password-to-organization mappings via formatting options
-- **Data protection**: Blocks all data access until a valid password is entered
-- **Clean UI**: Power BI default title is hidden, showing only your custom title
-- **User-friendly messages**: Displays custom error and success messages below the password field
-- **Button visibility control**: Optional PasswordValid column support for conditional button visibility
-- **Modal dialog mode**: Toggle between inline form and modal popup dialog (NEW in v1.0.6.0)
-- **Power BI button trigger**: Open modal dialog from Power BI buttons using ShowLoginModal filter column (NEW in v1.0.6.0)
+### Password Filtering
+- Users enter password → Visual filters data by organization
+- Works across all visuals on the same page
+- Data blocked until valid password entered
 
-### ⚠️ Limitations
+### Admin Password (Optional)
+- Set in **Security Settings** → **Admin Password**
+- Admin sees ALL organizations without filtering
+- Useful for support/troubleshooting
 
-- **No cross-page persistence for viewers**: Password and filter do not persist when navigating to other pages in published reports
-- **Page-level filters only**: Filters created by the visual only affect the current page
-- **Requires re-entry**: Users must enter password again on each page (if visual is placed on multiple pages)
+### Display Modes
+- **Inline Mode** (default): Form always visible
+- **Modal Mode**: Popup dialog, saves space
+- Toggle in **General Settings** → **Use Modal Mode**
 
-## Prerequisites
+---
 
-- Node.js (v14 or higher)
-- Power BI Visuals Tools (`pbiviz` CLI)
-- Power BI Desktop
+## Configuration
 
-## Installation
+### Updating Organization Passwords
 
-1. **Install Power BI Visuals Tools globally:**
-   ```bash
-   npm install -g powerbi-visuals-tools
-   ```
+**Easy workflow - NO REBUILD NEEDED:**
 
-2. **Install project dependencies:**
-   ```bash
-   npm install
-   ```
+1. **Edit `OrgPass.csv`** in the project root:
+```csv
+Organization,Password
+FAO,A7F9D2C4E1
+IAEA,B3E8A6F1D9
+...
+```
 
-## Building the Visual
+2. **Run the encryption script:**
+```bash
+node tools/encrypt-passwords.js
+```
 
-1. **Build the visual package:**
-   ```bash
-   npm run build
-   ```
-   This creates `OrgPassFilter.1.0.6.0.pbiviz` in the `dist` folder.
+3. **Copy the encrypted JSON** from the output
 
-2. **Or start the development server (optional):**
-   ```bash
-   npm start
-   ```
-   This starts a local server for development. Note: You'll still need to import the compiled `.pbiviz` file in Power BI Desktop for testing.
+4. **Paste into PowerBI:**
+   - Select visual → **Format visual** → **Security Settings**
+   - Paste into **Encrypted Mappings (JSON)** field
 
-## Usage in Power BI
+5. **Done!** Refresh visual - passwords updated
 
-1. **Import the visual:**
-   - Open Power BI Desktop
-   - Go to **Visualizations** pane
-   - Click the **...** (three dots) at the bottom
-   - Select **Import a visual from a file**
-   - Choose `OrgPassFilter.1.0.6.0.pbiviz` from the `dist` folder
+**Your OrgPass.csv passwords:**
+- `A7F9D2C4E1` → FAO
+- `B3E8A6F1D9` → IAEA
+- `C9D4B7E2A5` → ICAO
+- `D1F6C8A3E7` → IFAD
+- `E5A9D3F7B2` → ILO
+- `F8C2E4A1D6` → IMO
+- `G4E7B9D1F3` → IOM
+- `H2A5F8C7E9` → ITU
+- `I6D3E1B8F4` → UN Secretariat
+- `J9F2A4C6E7` → UNAIDS
+- `K3E8D7F1A5` → UNDP
+- `L7A2F9C4E8` → UNEP
+- `M5D1E3F7B9` → UNESCO
+- `N8C6A4E2F3` → UNFCCC
+- `O2F7D9B3E6` → UNFPA
+- `P4E1A8F5C7` → UN-HABITAT
+- `Q9D3F2E6A8` → UNHCR
+- `R6A7C4F9E1` → UNICEF
+- `S3F8E2D5A9` → UNIDO
+- `T1E6F4A3C8` → UNOPS
+- `U7D9A2F5E3` → UNRWA
+- `V5F1C8E7A4` → UNWOMEN
+- `W8A3F6D2E9` → UN Tourism
+- `X2E9F7A5C3` → UPU
+- `Y4F3D8E1A6` → WFP
+- `Z9A7E2F5C8` → WHO
+- `A3F6E9D1B4` → WIPO
+- `B8E2F4A7C5` → WMO
+- `C1F9D3E6A8` → WORLD BANK
+- `D7A4F2E8C3` → WTO
 
-2. **Add data:**
-   - Import your `data.csv` file into Power BI
-   - Drag the visual to your report canvas
-   - Add your data fields to the visual (especially the Organization column)
+**These are encrypted in the code - not visible as plaintext!**
 
-3. **Configure the visual:**
-   - Select the visual
-   - Go to **Format visual** pane
-   - **General Settings:**
-     - **Title**: Customize the title/label displayed above the password input (default: "Login")
-     - **Use Modal Dialog Mode**: Toggle to enable modal popup mode (default: disabled, shows inline form)
-   - **Filter Settings:**
-     - **Organization Password Mapping**: Edit the JSON mapping:
-       ```json
-       {
-         "FAO123": "FAO",
-         "UNICEF123": "UNICEF",
-         "UNHCR123": "UNHCR",
-         "WHO123": "WHO",
-         "WIPO123": "WIPO"
-       }
-       ```
-     - **Admin Password**: (Optional) Enter an admin password to view all data without organization filtering
+### Admin Password (Optional)
 
-4. **Use the visual:**
-   - Enter a password in the input field (e.g., "FAO123")
-   - Click **Enter** or press Enter
-   - The visual will filter data by the corresponding organization
-   - All visuals **on the same page** will be filtered automatically
-   - Clear the password field and click Enter to reset the filter
-   - **Admin mode**: Enter the admin password (if configured) to view all data without filtering
+**In PowerBI → Format visual → Security Settings → Admin Password**
 
-5. **⚠️ Important for multi-page reports:**
-   - Password does NOT persist across pages for end users (viewers)
-   - Users must re-enter password on each page if visual is placed on multiple pages
-   - **Recommended**: Use one of these approaches instead:
-     - **Single-page design**: Place all content on one scrollable page
-     - **Power BI Row-Level Security (RLS)**: Assign users to roles (no password needed)
-     - **Report editors**: Password persistence works when visuals are synchronized (edit mode only)
+Set a separate password (e.g., `SuperAdmin2024`) to view ALL organizations. This is configured in PowerBI, not in the code.
 
-## Default Password Mappings
+### Visual Settings
 
-The visual comes with default password mappings:
-- `FAO123` → FAO
-- `UNICEF123` → UNICEF
-- `UNHCR123` → UNHCR
-- `WHO123` → WHO
-- `WIPO123` → WIPO
+**In General Settings:**
+- **Title**: Customize form title (default: "Organization Login")
+- **Use Modal Mode**: Toggle popup dialog mode
 
-You can customize these in the visual's formatting options.
-
-## Admin Password Feature
-
-The visual supports an optional admin password that bypasses organization filtering:
-
-- **Configure Admin Password**: Set an admin password in **Filter Settings** → **Admin Password**
-- **Admin Access**: When the admin password is entered, all filters are cleared and all data is displayed
-- **Use Case**: Useful for administrators or reviewers who need to see all data across all organizations
-- **Priority**: Admin password is checked first before organization password mappings
-- **Message**: When admin password is used, you'll see "Admin access granted - showing all data"
-
-## Modal Dialog Mode Feature (NEW in v1.0.6.0)
-
-The visual now supports two display modes:
-
-### Inline Mode (Default)
-- Password form is displayed directly on the report page
-- Traditional inline input field with submit button
-- Best for: Always-visible login forms
-
-### Modal Dialog Mode
-- Password form appears in a modal popup dialog
-- Cleaner UI - shows a "Login" button when not authenticated
-- Shows logged-in status when password is valid
-- Can be triggered by:
-  - Clicking the visual's own "Login" button
-  - Power BI buttons via `ShowLoginModal` filter column (set to "1")
-- Best for: Space-saving designs and button-triggered authentication
-
-**How to Enable Modal Mode:**
-1. Select the visual
-2. Go to **Format visual** → **General Settings**
-3. Enable **"Use Modal Dialog Mode"**
-
-**Power BI Button Integration:**
-1. Add a calculated column `ShowLoginModal` to your data table (default value: "0")
-2. Create a Power BI button
-3. Configure button action to filter `ShowLoginModal` column to "1"
-4. When button is clicked, the modal dialog will automatically open
-5. After modal opens, the filter is automatically cleared
-
-## Button Visibility Control Feature
-
-The visual now supports conditional button visibility through an optional `PasswordValid` column:
-
-- **How It Works**: When a valid password is entered, the visual sets `PasswordValid = "1"`. When invalid or cleared, it sets `PasswordValid = "0"`
-- **Setup Required**: Add a `PasswordValid` column to your data model with default value "0"
-- **Use Case**: Show/hide Power BI buttons based on password validation status
-- **Non-Breaking**: This feature is completely optional - if the column doesn't exist, the visual works exactly as before
-- **Implementation**: See `ONE_PAGE_DASHBOARD_GUIDE.md` for detailed step-by-step instructions on setting up buttons with conditional visibility
-
-**Quick Setup:**
-1. Add a calculated column named `PasswordValid` to your data table with default value `"0"`
-2. Configure Power BI buttons to show/hide based on `PasswordValid` column value
-3. When users enter a valid password, buttons will automatically appear
+---
 
 ## Data Requirements
 
-- Your dataset must contain an **Organization** column (or column with "Organization" or "Org" in the name)
-- The visual will automatically detect the organization column (case-insensitive)
-- The organization values should match the values in your password mapping exactly (case-sensitive)
-- All visuals that need to be filtered must use the same data source table
+- Your data must have an **Organization** column (or column containing "org")
+- Organization values must match password mapping exactly (case-sensitive)
+- All visuals must use the same data source table for filtering to work
 
-## Password Persistence and Limitations
+---
 
-### Current Behavior
+## Usage
 
-**Within the Same Visual Instance (Same Page):**
-- ✅ Password is saved using Power BI's `persistProperties`
-- ✅ Password persists if you refresh the page or return to it
-- ✅ Filters apply to all visuals on the same page
+### For End Users
+1. Open dashboard
+2. All data is blocked (hidden)
+3. Enter password
+4. Click **Enter**
+5. View filtered data for your organization
 
-**Across Multiple Pages for End Users (Viewers):**
-- ❌ Password does NOT persist when navigating to other pages
-- ❌ Filters do NOT persist across pages (page-level only)
-- ❌ Each page creates a new visual instance with no shared state
-- ❌ Users must re-enter password on each page
+### For Admins
+1. Enter admin password
+2. View ALL organizations
 
-**For Report Editors (Edit Mode):**
-- ✅ Password persists if visuals are synchronized (copy visual → choose "Synchronize")
-- ⚠️ Only works in edit mode, not for end users viewing published reports
+### Modal Mode
+1. Enable in **General Settings** → **Use Modal Mode**
+2. Visual shows compact status box
+3. Click button to open password dialog
 
-### Why This Limitation Exists
+---
 
-Power BI's architecture prevents cross-page state sharing for custom visuals in viewer mode:
-- Custom visuals create isolated instances on each page
-- `localStorage` and `sessionStorage` are blocked/unreliable in Power BI's sandbox (sessionStorage was removed from this visual as it's not reliable)
-- `applyJsonFilter` creates page-level filters, not report-level filters
-- `persistProperties` only works within the same instance or synchronized instances (edit mode only)
-- End users (viewers) cannot synchronize visuals
+## Limitations
 
-### Recommended Solutions
+### Security
+- ❌ Passwords visible in browser JavaScript to technical users
+- ❌ Not suitable for highly sensitive data
+- ❌ No user authentication or access tracking
+- ✅ Good for basic "friendly barrier" protection
 
-**Option 1: Single-Page Dashboard (Works with Current Visual)**
-- Place ALL content on ONE scrollable page
-- Login section at top, data sections below
-- Use bookmarks/buttons to show/hide sections
-- No page navigation = no persistence problems
-- **NEW**: Add a `PasswordValid` column to your data model to enable conditional button visibility
-- **📖 See `ONE_PAGE_DASHBOARD_GUIDE.md` for complete step-by-step instructions**
+### Filtering
+- ✅ Filters all visuals on the SAME page
+- ❌ Filters do NOT persist across pages
+- ❌ Users must re-enter password on each page (if visual on multiple pages)
 
-**Option 2: Power BI Row-Level Security (Recommended Enterprise Solution)**
-- Configure roles in Power BI Desktop (one role per organization)
-- Assign users to roles in Power BI Service
-- Users automatically see only their organization's data
-- No password visual needed
-- Works perfectly across all pages
+### Recommendations
+- **Single-page dashboard**: Put all content on one scrollable page
+- **Or use PowerBI RLS**: For true security with user authentication
 
-**Option 3: Accept Re-Entry (Current Behavior)**
-- Place visual on all pages
-- Users re-enter password on each page
-- Not ideal UX, but works
-
-### Best Practice
-
-For production reports with end users:
-- **Use Power BI Row-Level Security (RLS)** instead of this visual
-- Or design as a **single-page dashboard**
-
-This visual is best suited for:
-- Demo/prototype reports
-- Reports used by editors (who can synchronize visuals)
-- Single-page dashboards
-
-## User Messages
-
-The visual displays custom messages below the password field to provide user feedback:
-- **Error messages**: "Please enter a password" or "Invalid password" when validation fails
-- **Success messages**: "Access granted" when a valid password is entered (displays for 3 seconds)
-- These messages appear directly below the password input field for clear visibility
-
-## Security Considerations
-
-⚠️ **Important Security Notes:**
-
-- This visual provides **client-side password protection only** - it's not a secure authentication mechanism
-- Passwords are stored in plain text in the visual's configuration and persisted properties
-- This is suitable for basic access control within Power BI reports but should not be used for sensitive data protection
-- For production use, consider implementing proper authentication at the data source level
-- Password persistence is session-based and stored within the Power BI report file
-
-## Project Structure
-
-```
-.
-├── src/
-│   ├── visual.ts              # Main visual logic
-│   ├── settings.ts            # Formatting settings
-│   └── PasswordModalDialog.ts # Modal dialog implementation
-├── style/
-│   └── visual.less        # Visual styling
-├── capabilities.json      # Visual capabilities definition
-├── pbiviz.json           # Visual configuration
-├── package.json          # Node.js dependencies
-├── tsconfig.json         # TypeScript configuration
-└── README.md            # This file
-```
+---
 
 ## Troubleshooting
 
-**Visual not appearing:**
-- Make sure you've imported `OrgPassFilter.1.0.6.0.pbiviz` correctly
-- Check that Power BI Desktop is updated to the latest version
-- Try restarting Power BI Desktop after importing
+### Build Error
+```bash
+npm install
+npm cache clean --force
+pbiviz package
+```
 
-**Filtering not working:**
-- Verify that your data has an Organization column (or column with "Org" in the name)
-- Check that the password mapping JSON is valid
-- Ensure organization values match exactly (case-sensitive)
-- Make sure all visuals that should be filtered use the same data source table
+### Password Doesn't Work
+1. Verify `OrgPass.csv` format is correct
+2. Re-run `node tools/encrypt-passwords.js`
+3. Ensure you copied the encrypted JSON into PowerBI settings
+4. Check the JSON is pasted correctly (should start with `[` and end with `]`)
+5. Refresh the visual in PowerBI
 
-**No data displayed:**
-- Enter a valid password first - the visual blocks all data until a password is entered
-- Make sure data fields are added to the visual
-- Check that the Organization column is properly mapped
-- Verify your data is loaded correctly in Power BI
+### Encryption Script Error
+- Ensure `OrgPass.csv` exists in project root
+- Check CSV format: `Organization,Password` header
+- No empty lines between data rows
 
-**Other visuals not filtering:**
-- Ensure all visuals use the same data source table
-- Verify that the Organization column exists in all visuals
-- Check that the column names match exactly across all visuals
+### "No password mappings configured" Error
+- Run `node tools/encrypt-passwords.js` to generate encrypted JSON
+- Copy the JSON output
+- Paste into PowerBI: Format visual → Security Settings → Encrypted Mappings
+- Make sure JSON is valid (starts with `[` and ends with `]`)
+
+### Data Not Filtering
+- Ensure Organization column is added to visual
+- Verify other visuals use same data table
+- Check organization column exists in all visuals
+
+### Visual Not Appearing
+- Update PowerBI Desktop to latest version
+- Restart PowerBI after import
+- Check `.pbiviz` file imported correctly
+
+---
+
+## When to Use PowerBI RLS Instead
+
+Use **Row-Level Security (RLS)** if you need:
+- ✅ Enterprise-grade security
+- ✅ User authentication (Azure AD, etc.)
+- ✅ Compliance requirements
+- ✅ Per-user access tracking
+- ✅ Cross-page filtering
+
+**Setup RLS:**
+1. PowerBI Desktop → **Modeling** → **Manage Roles**
+2. Create role: `[Organization] = USERNAME()`
+3. Publish to PowerBI Service
+4. Assign users to roles
+
+[PowerBI RLS Documentation](https://learn.microsoft.com/en-us/power-bi/admin/service-admin-rls)
+
+---
+
+## Version History
+
+### v2.1.0.0 (Current - AES-256 Encrypted)
+- 🔐 **Major security improvement:** AES-256 encryption for passwords
+- Organization names encrypted with their passwords
+- No plaintext passwords or org names in code
+- Password acts as decryption key
+- Much more secure than plaintext JSON
+- Encryption script: `tools/encrypt-passwords.js`
+- Dependencies: Added `crypto-js` for AES-256
+
+### v2.0.0.0
+- Complete rewrite and simplification
+- Removed dataset table complexity
+- JSON configuration (now replaced with encrypted)
+- 68% code reduction
+
+### v1.0.7.0 (Legacy)
+- Dataset table approach
+- Complex password persistence
+- PasswordValid field
+
+---
 
 ## Development
 
-To modify the visual:
+### Project Structure
+```
+├── src/
+│   ├── visual.ts              # Main visual logic with AES-256
+│   ├── settings.ts            # Settings (2 cards)
+│   └── PasswordModalDialog.ts # Modal dialog
+├── tools/
+│   └── encrypt-passwords.js   # Password encryption script
+├── style/visual.less          # Styling
+├── capabilities.json          # Visual definition
+├── pbiviz.json               # Configuration
+├── OrgPass.csv               # Your password mappings
+└── README.md                 # This file
+```
 
-1. Edit the TypeScript files in `src/`
-2. Modify styles in `style/visual.less`
-3. Update capabilities in `capabilities.json`
-4. Rebuild with `npm run build`
-5. Re-import `OrgPassFilter.1.0.6.0.pbiviz` in Power BI Desktop
+### Build Commands
+```bash
+npm install                    # Install dependencies
+node tools/encrypt-passwords.js # Generate encrypted mappings
+pbiviz package                 # Build .pbiviz file
+pbiviz start                   # Dev server (optional)
+```
 
-**Development Server:**
-- Run `npm start` to start the development server (optional)
-- Note: The development server is mainly useful for automatic recompilation
-- For testing, import the compiled `.pbiviz` file directly in Power BI Desktop
+### Updating Passwords (No Rebuild!)
+1. Edit `OrgPass.csv`
+2. Run `node tools/encrypt-passwords.js`
+3. Copy encrypted JSON output
+4. Paste into PowerBI Settings → Security Settings → Encrypted Mappings
+5. Done! Visual updates immediately
+
+---
 
 ## License
 
 MIT
 
+## Support
+
+- Check JSON syntax: [JSONLint](https://jsonlint.com/)
+- Test with sample passwords first
+- Verify organization names match exactly
+- Use browser console (F12) for errors
+
+---
+
 ## References
 
-- [Power BI Custom Visuals Documentation](https://learn.microsoft.com/en-us/power-bi/developer/visuals/)
-- [Power BI Visuals API](https://github.com/Microsoft/PowerBI-Visuals)
-
+- [PowerBI Custom Visuals Docs](https://learn.microsoft.com/en-us/power-bi/developer/visuals/)
+- [PowerBI Row-Level Security](https://learn.microsoft.com/en-us/power-bi/admin/service-admin-rls)
