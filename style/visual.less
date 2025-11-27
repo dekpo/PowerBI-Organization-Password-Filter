@@ -120,7 +120,7 @@
 // Modal mode UI styles
 .modalLoginButton {
     padding: 15px 30px;
-    background-color: #0078d4;
+    background-color: #ff6f00;
     color: white;
     border: none;
     border-radius: 4px;
@@ -132,12 +132,25 @@
     transition: background-color 0.3s;
 
     &:hover {
-        background-color: #106ebe;
+        background-color: #e65100;
     }
 
     &:active {
-        background-color: #005a9e;
+        background-color: #bf360c;
     }
+}
+
+.loginRequiredStatus {
+    padding: 15px;
+    background-color: #fff3e0;
+    border: 1px solid #ff6f00;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .loggedInStatus {
@@ -150,10 +163,13 @@
     text-align: center;
     width: 100%;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
 }
 
 .changePasswordButton {
-    margin-top: 10px;
     padding: 6px 12px;
     background-color: #0078d4;
     color: white;
