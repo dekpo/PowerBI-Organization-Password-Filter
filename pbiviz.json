@@ -4,7 +4,7 @@
     "displayName": "Organization Login",
     "guid": "OrgPassFilter",
     "visualClassName": "OrganizationPasswordFilter",
-        "version": "2.1.0.0",
+        "version": "2.2.0.0",
         "description": "Password-based access control for public PowerBI dashboards with AES-256 encryption. Organization names are encrypted and stored securely in the visual code. Users enter password (which acts as decryption key) to unlock their organization's data. Supports admin access and modal/inline display modes. Much more secure than plaintext mappings. For enterprise security, use PowerBI Row-Level Security (RLS).",
     "supportUrl": "https://github.com",
     "gitHubUrl": ""

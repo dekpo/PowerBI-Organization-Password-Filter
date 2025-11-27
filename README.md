@@ -2,7 +2,7 @@
 
 A custom PowerBI visual providing password-based access control for public dashboards using **AES-256 encryption**.
 
-**Version:** 2.1.0.0 (AES-256 Encrypted)
+**Version:** 2.2.0.0 (AES-256 Encrypted)
 
 ## 🔐 Security Model (v2.1.0+)
 
@@ -34,7 +34,7 @@ A custom PowerBI visual providing password-based access control for public dashb
 npm install
 pbiviz package
 ```
-Output: `dist/organizationPasswordFilter.2.1.0.0.pbiviz`
+Output: `dist/OrgPassFilter.2.2.0.0.pbiviz`
 
 Import to PowerBI Desktop:
 - **Get more visuals** → **Import from file**
@@ -265,7 +265,13 @@ Use **Row-Level Security (RLS)** if you need:
 
 ## Version History
 
-### v2.1.0.0 (Current - AES-256 Encrypted)
+### v2.2.0.0 (Current - Simplified JSON Format)
+- ✨ **Simplified JSON format:** Changed from `[{"e":"..."}]` to `["..."]` 
+- Removed redundant wrapper object - cleaner and simpler
+- **Breaking change:** Existing encrypted mappings need to be regenerated
+- Run `node tools/encrypt-passwords.js` to get new format
+
+### v2.1.0.0 (AES-256 Encrypted)
 - 🔐 **Major security improvement:** AES-256 encryption for passwords
 - Organization names encrypted with their passwords
 - No plaintext passwords or org names in code

@@ -57,9 +57,7 @@ const encrypted = mappings.map(({ org, password }) => {
     
     console.log(`✓ Encrypted: ${org.padEnd(20)} (password: ${password.substring(0, 4)}...)`);
     
-    return {
-        e: encryptedOrg  // Only store encrypted data
-    };
+    return encryptedOrg;  // Return just the encrypted string
 });
 
 console.log('\n✅ Encryption complete!\n');

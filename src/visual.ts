@@ -49,7 +49,7 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
     // State
     private currentOrganization: string | null = null;
     private currentDataView: DataView | null = null;
-    private encryptedMappings: Array<{ e: string }> = [];
+    private encryptedMappings: string[] = [];
 
     constructor(options?: VisualConstructorOptions) {
         if (!options) {
@@ -179,10 +179,10 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
             this.showMessage("No password mappings configured", "error");
             return null;
         }
-        for (const mapping of this.encryptedMappings) {
+        for (const encryptedOrg of this.encryptedMappings) {
             try {
                 // Try to decrypt the encrypted organization name with the password
-                const decrypted = CryptoJS.AES.decrypt(mapping.e, password).toString(CryptoJS.enc.Utf8);
+                const decrypted = CryptoJS.AES.decrypt(encryptedOrg, password).toString(CryptoJS.enc.Utf8);
                 
                 // Validate it's a real organization name (not garbage from wrong password)
                 // Valid org names: letters, spaces, hyphens (e.g., "UN-HABITAT", "UN Secretariat")
@@ -432,16 +432,39 @@ export class OrganizationPasswordFilter implements powerbi.extensibility.visual.
         } else {
             // Not logged in - show login button
             const statusText = document.createElement("div");
-            statusText.style.cssText = "color: #e65100; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px;";
+            statusText.style.cssText = "color: #ff6f00; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; justify-content: center;";
             const crossIcon = document.createElement("span");
             crossIcon.textContent = "✗";
-            crossIcon.style.cssText = "color: #e65100; font-size: 14px; font-weight: bold;";
+            crossIcon.style.cssText = "color: #ff6f00; font-size: 14px; font-weight: bold;";
             statusText.appendChild(crossIcon);
             statusText.appendChild(document.createTextNode(" Login Required"));
             
             const loginButton = document.createElement("button");
             loginButton.textContent = "Enter Password";
-            loginButton.className = "enterPasswordButton";
+            loginButton.className = "modalLoginButton";
+            loginButton.type = "button"; // Ensure it's a button, not submit
+            loginButton.style.cssText = `
+                padding: 6px 12px;
+                background-color: #ff6f00;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: normal;
+                width: 100%;
+                box-sizing: border-box;
+                transition: background-color 0.3s;
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+            `;
+            loginButton.onmouseover = () => {
+                loginButton.style.backgroundColor = "#e65100";
+            };
+            loginButton.onmouseout = () => {
+                loginButton.style.backgroundColor = "#ff6f00";
+            };
             loginButton.onclick = () => this.openPasswordModal();
             
             this.modalStatusDiv.appendChild(statusText);
