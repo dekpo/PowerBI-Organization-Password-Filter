@@ -1,13 +1,13 @@
 # PowerBI Organization Login Visual
 
-A custom PowerBI visual providing password-based access control for public dashboards using **AES-256 encryption**.
+A custom PowerBI visual providing password-based access control for public dashboards using **secure encryption**.
 
-**Version:** 2.2.0.0 (AES-256 Encrypted)
+**Version:** 2.2.0.0
 
 ## 🔐 Security Model (v2.1.0+)
 
-### **AES-256 Encryption**
-- Organization names are **encrypted with their passwords** using industry-standard AES-256
+### **Encrypted Password Protection**
+- Organization names are **encrypted with their passwords** using industry-standard encryption
 - **No plaintext passwords** or organization names in the code
 - Password acts as **decryption key** - only correct password can unlock the org
 - **Much more secure** than plaintext JSON mappings
@@ -15,12 +15,12 @@ A custom PowerBI visual providing password-based access control for public dashb
 ### **What This Provides:**
 ✅ **Encrypted storage** - Org names encrypted in code  
 ✅ **No visible passwords** - Can't see passwords by inspecting code  
-✅ **Raises the bar** - Requires crypto knowledge to break  
+✅ **Raises the bar** - Requires technical knowledge to break  
 ✅ **Good for:** Anonymous access, public partner dashboards, basic protection  
 
 ### **What This Doesn't Provide:**
-❌ **Not military-grade** - Still client-side (algorithm visible)  
-❌ **Not enterprise security** - Determined attackers with crypto expertise can analyze  
+❌ **Not military-grade** - Still client-side security  
+❌ **Not enterprise security** - Determined attackers with technical expertise can analyze  
 ❌ **Not for:** Compliance (GDPR/HIPAA), highly confidential data  
 
 **For enterprise security:** Use **PowerBI Row-Level Security (RLS)** with user authentication.
@@ -29,16 +29,18 @@ A custom PowerBI visual providing password-based access control for public dashb
 
 ## Quick Start
 
-### 1. Build and Import Visual (One-Time)
+### 1. Download and Import Visual (One-Time)
+
+**Option A: Download Pre-built Release (Recommended)**
+- Download: [OrgPassFilter.2.2.0.0.pbiviz](https://github.com/CEB-HLCM/PowerBI-Organization-Password-Filter/releases/download/v2.2.0/OrgPassFilter.2.2.0.0.pbiviz)
+- Import to PowerBI Desktop: **Get more visuals** → **Import from file** → Select the `.pbiviz` file
+
+**Option B: Build from Source**
 ```bash
 npm install
 pbiviz package
 ```
 Output: `dist/OrgPassFilter.2.2.0.0.pbiviz`
-
-Import to PowerBI Desktop:
-- **Get more visuals** → **Import from file**
-- Select the `.pbiviz` file
 
 ### 2. Add Data
 - Drag visual to canvas
@@ -46,6 +48,14 @@ Import to PowerBI Desktop:
 - Add Organization column to **Organization**
 
 ### 3. Configure Encrypted Passwords
+
+**Option A: Use the Web Tool (Recommended for users)**
+- Visit the [online documentation tool](https://[your-username].github.io/[repository-name]/doc/) (GitHub Pages)
+- Paste CSV content or upload CSV file
+- Generate encrypted JSON instantly
+- Copy and paste into PowerBI settings
+
+**Option B: Use the Command Line Tool**
 ```bash
 node tools/encrypt-passwords.js
 ```
@@ -271,14 +281,14 @@ Use **Row-Level Security (RLS)** if you need:
 - **Breaking change:** Existing encrypted mappings need to be regenerated
 - Run `node tools/encrypt-passwords.js` to get new format
 
-### v2.1.0.0 (AES-256 Encrypted)
-- 🔐 **Major security improvement:** AES-256 encryption for passwords
+### v2.1.0.0 (Encrypted)
+- 🔐 **Major security improvement:** Secure encryption for passwords
 - Organization names encrypted with their passwords
 - No plaintext passwords or org names in code
 - Password acts as decryption key
 - Much more secure than plaintext JSON
 - Encryption script: `tools/encrypt-passwords.js`
-- Dependencies: Added `crypto-js` for AES-256
+- Dependencies: Added `crypto-js` for encryption
 
 ### v2.0.0.0
 - Complete rewrite and simplification
@@ -298,7 +308,7 @@ Use **Row-Level Security (RLS)** if you need:
 ### Project Structure
 ```
 ├── src/
-│   ├── visual.ts              # Main visual logic with AES-256
+│   ├── visual.ts              # Main visual logic with encryption
 │   ├── settings.ts            # Settings (2 cards)
 │   └── PasswordModalDialog.ts # Modal dialog
 ├── tools/

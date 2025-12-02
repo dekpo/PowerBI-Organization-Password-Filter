@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PowerBI Organization Password Filter - Configuration Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.95;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .file-upload-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px 20px;
+            background: #f5f5f5;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .file-upload-label:hover {
+            background: #e8e8e8;
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .file-upload-label svg {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+        }
+
+        input[type="file"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            overflow: hidden;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #666;
+        }
+
+        .btn-secondary:hover {
+            background: #e8e8e8;
+        }
+
+        .output-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .output-section.hidden {
+            display: none;
+        }
+
+        .output-label {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .output-textarea {
+            background: #fff;
+            border: 2px solid #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            min-height: 120px;
+            word-break: break-all;
+        }
+
+        .copy-button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .copy-button:hover {
+            background: #45a049;
+        }
+
+        .copy-button.copied {
+            background: #2196f3;
+        }
+
+        .error-message {
+            margin-top: 15px;
+            padding: 12px;
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            border-radius: 4px;
+            color: #c62828;
+            font-size: 14px;
+        }
+
+        .success-message {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            border-radius: 4px;
+            color: #2e7d32;
+            font-size: 14px;
+        }
+
+        .info-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .info-box strong {
+            color: #1976d2;
+        }
+
+        .example-csv {
+            margin-top: 10px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #666;
+            white-space: pre-wrap;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .stat-item {
+            flex: 1;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .download-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .download-button {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .download-button:active {
+            transform: translateY(0);
+        }
+
+        .version-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .stats {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 PowerBI Organization Password Filter</h1>
+            <p>Generate encrypted JSON mappings from CSV</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <div class="section-title">CSV Input</div>
+                
+                <div class="input-group">
+                    <label for="csvInput">Paste your CSV content here:</label>
+                    <textarea id="csvInput" placeholder="Organization,Password&#10;Example Org 1,Pass123XYZ&#10;Example Org 2,Secure456ABC&#10;..."></textarea>
+                </div>
+
+                <div class="input-group">
+                    <label>Or upload a CSV file:</label>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="fileInput" accept=".csv" />
+                        <label for="fileInput" class="file-upload-label">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            Choose CSV File
+                        </label>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="generateJSON()">
+                        <span>🔒</span>
+                        Generate Encrypted JSON
+                    </button>
+                    <button class="btn-secondary" onclick="clearAll()">
+                        <span>🗑️</span>
+                        Clear
+                    </button>
+                </div>
+
+                <div id="errorMessage" class="error-message hidden"></div>
+                <div id="successMessage" class="success-message hidden"></div>
+            </div>
+
+            <div class="output-section hidden" id="outputSection">
+                <div class="output-label">
+                    <span>📋</span>
+                    Generated JSON (Copy this to PowerBI Security Settings):
+                </div>
+                <textarea id="jsonOutput" class="output-textarea" readonly></textarea>
+                <button class="copy-button" onclick="copyToClipboard()">📋 Copy JSON</button>
+
+                <div class="stats" id="stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="orgCount">0</div>
+                        <div class="stat-label">Organizations</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="encryptionStatus">✓</div>
+                        <div class="stat-label">Encryption</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="download-section">
+                <div class="section-title" style="justify-content: center; margin-bottom: 10px;">
+                    <span>📦</span>
+                    Download Latest Release
+                </div>
+                <p style="color: #555; margin-bottom: 10px;">Get the PowerBI visual file (.pbiviz) ready to import</p>
+                <a href="https://github.com/CEB-HLCM/PowerBI-Organization-Password-Filter/releases/download/v2.2.0/OrgPassFilter.2.2.0.0.pbiviz" 
+                   class="download-button" 
+                   download="OrgPassFilter.2.2.0.0.pbiviz">
+                    ⬇️ Download Visual (v2.2.0)
+                </a>
+                <div class="version-info">Import to PowerBI: Get more visuals → Import from file</div>
+            </div>
+
+            <div class="info-box">
+                <strong>📖 How to use:</strong><br>
+                1. Download the visual file above and import it into PowerBI<br>
+                2. Prepare your CSV file with format: <code>Organization,Password</code> (first row is header)<br>
+                3. Paste the CSV content above or upload the file<br>
+                4. Click "Generate Encrypted JSON"<br>
+                5. Copy the generated JSON string<br>
+                6. In PowerBI: Select visual → Format visual → Security Settings → Paste into "Encrypted Mappings (JSON)" field<br>
+                7. Refresh your visual - no rebuild needed!<br><br>
+                
+                <strong>🔒 Security:</strong> Organization names are securely encrypted. Each password acts as the decryption key for its organization. No plaintext passwords or organization names are stored in the code.
+            </div>
+
+            <div class="section">
+                <div class="section-title">CSV Format Example</div>
+                <div class="example-csv">Organization,Password
+Example Organization 1,Pass123XYZ
+Example Organization 2,Secure456ABC
+Example Organization 3,MyPassword789
+Another Organization,TestPass2024</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    document.getElementById('csvInput').value = event.target.result;
+                    hideMessages();
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+            
+            if (lines.length < 2) {
+                throw new Error('CSV must have at least a header row and one data row');
+            }
+
+            // Check header
+            const header = lines[0].toLowerCase();
+            if (!header.includes('organization') || !header.includes('password')) {
+                throw new Error('CSV header must contain "Organization" and "Password" columns');
+            }
+
+            const mappings = [];
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',').map(s => s.trim());
+                if (parts.length >= 2) {
+                    const org = parts[0];
+                    const password = parts[1];
+                    if (org && password) {
+                        mappings.push({ org, password });
+                    }
+                }
+            }
+
+            if (mappings.length === 0) {
+                throw new Error('No valid organization/password pairs found in CSV');
+            }
+
+            return mappings;
+        }
+
+        function encryptMappings(mappings) {
+            return mappings.map(({ org, password }) => {
+                // Encrypt organization name using password as key
+                return CryptoJS.AES.encrypt(org, password).toString();
+            });
+        }
+
+        function generateJSON() {
+            hideMessages();
+            const csvInput = document.getElementById('csvInput').value.trim();
+            
+            if (!csvInput) {
+                showError('Please paste CSV content or upload a CSV file');
+                return;
+            }
+
+            try {
+                // Parse CSV
+                const mappings = parseCSV(csvInput);
+                
+                // Encrypt mappings
+                const encrypted = encryptMappings(mappings);
+                
+                // Generate JSON string
+                const jsonString = JSON.stringify(encrypted);
+                
+                // Display output
+                document.getElementById('jsonOutput').value = jsonString;
+                document.getElementById('outputSection').classList.remove('hidden');
+                document.getElementById('orgCount').textContent = mappings.length;
+                document.getElementById('encryptionStatus').textContent = '✓ Secure';
+                
+                showSuccess(`Successfully encrypted ${mappings.length} organization(s)!`);
+            } catch (error) {
+                showError(error.message);
+                document.getElementById('outputSection').classList.add('hidden');
+            }
+        }
+
+        function copyToClipboard() {
+            const jsonOutput = document.getElementById('jsonOutput');
+            jsonOutput.select();
+            jsonOutput.setSelectionRange(0, 99999); // For mobile devices
+            
+            try {
+                document.execCommand('copy');
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = '✓ Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                // Fallback for modern browsers
+                navigator.clipboard.writeText(jsonOutput.value).then(() => {
+                    const button = event.target;
+                    const originalText = button.textContent;
+                    button.textContent = '✓ Copied!';
+                    button.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.classList.remove('copied');
+                    }, 2000);
+                }).catch(() => {
+                    showError('Failed to copy to clipboard. Please select and copy manually.');
+                });
+            }
+        }
+
+        function clearAll() {
+            document.getElementById('csvInput').value = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('jsonOutput').value = '';
+            document.getElementById('outputSection').classList.add('hidden');
+            hideMessages();
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+
+        function hideMessages() {
+            document.getElementById('errorMessage').classList.add('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
+
