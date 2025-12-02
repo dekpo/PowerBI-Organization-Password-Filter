@@ -50,7 +50,7 @@ Output: `dist/OrgPassFilter.2.2.0.0.pbiviz`
 ### 3. Configure Encrypted Passwords
 
 **Option A: Use the Web Tool (Recommended for users)**
-- Visit the [online documentation tool](https://[your-username].github.io/[repository-name]/doc/) (GitHub Pages)
+- Visit the [online documentation tool](https://[your-username].github.io/[repository-name]/docs/) (GitHub Pages)
 - Paste CSV content or upload CSV file
 - Generate encrypted JSON instantly
 - Copy and paste into PowerBI settings
