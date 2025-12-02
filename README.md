@@ -32,7 +32,7 @@ A custom PowerBI visual providing password-based access control for public dashb
 ### 1. Download and Import Visual (One-Time)
 
 **Option A: Download Pre-built Release (Recommended)**
-- Download: [OrgPassFilter.2.2.0.0.pbiviz](https://github.com/CEB-HLCM/PowerBI-Organization-Password-Filter/releases/download/v2.2.0/OrgPassFilter.2.2.0.0.pbiviz)
+- Download: [OrgPassFilter.2.2.0.0.pbiviz](https://github.com/dekpo/PowerBI-Organization-Password-Filter/releases/download/v2.2.0/OrgPassFilter.2.2.0.0.pbiviz)
 - Import to PowerBI Desktop: **Get more visuals** → **Import from file** → Select the `.pbiviz` file
 
 **Option B: Build from Source**
