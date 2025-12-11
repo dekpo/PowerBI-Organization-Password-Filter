@@ -350,7 +350,145 @@ MIT
 
 ---
 
+## Power BI Custom Visuals - Technical Overview
+
+### What This Solution Is Built On
+
+This visual is a **JavaScript/TypeScript-based custom Power BI component** that extends Power BI's native capabilities. Understanding what's possible (and what isn't) helps frame technical discussions and future development decisions.
+
+### Development Capabilities
+
+#### **What Can Be Built with JavaScript/TypeScript Custom Visuals**
+
+**✅ Interactive UI Components** (like this project)
+- Navigation menus, tabs, accordions
+- Filter controls and search interfaces
+- Custom forms and dialogs
+- Password protection and access control
+- Bookmark navigation integration
+
+**✅ Custom Visualizations**
+- Any chart type not in Power BI core visuals
+- Network diagrams, custom maps, specialized graphs
+- Real-time data displays
+- Text analytics and word clouds
+
+**✅ Advanced Interactions**
+- Cross-filtering other visuals on same page
+- Click/hover/drag interactions
+- Conditional show/hide based on data
+- Responsive layouts that adapt to size
+
+**✅ Integration Capabilities**
+- Power BI Filtering API (cross-visual filtering)
+- Power BI Bookmarks API (page navigation)
+- Power BI Dialog API (modal popups)
+- External JavaScript libraries (D3.js, Chart.js, etc.)
+
+#### **R and Python Visuals (Alternative Approach)**
+
+Power BI also supports **R and Python-powered visuals** for statistical/scientific use cases:
+
+**Best for:**
+- Advanced statistical analysis
+- Scientific/academic visualizations (ggplot2, matplotlib)
+- Machine learning result displays
+- Complex statistical models
+
+**Limitations:**
+- Server-side execution (slower)
+- Limited interactivity (mostly static images)
+- Requires R/Python runtime on viewing machine
+- Not suitable for UI components or navigation
+
+**Our solution uses JavaScript/TypeScript** because it requires rich interactivity, real-time filtering, and UI control.
+
+### Key Advantages of JavaScript/TypeScript Approach
+
+| Feature | Benefit |
+|---------|---------|
+| **Client-side execution** | Fast, no server round-trips |
+| **Rich interactivity** | Click, hover, drag, selection |
+| **Cross-filtering** | Filter other visuals seamlessly |
+| **No runtime dependencies** | Runs directly in browser |
+| **Modern web tech** | Leverage HTML5/CSS3/ES6+ |
+| **Easy distribution** | Single `.pbiviz` file |
+
+### Technical Limitations to Understand
+
+#### **Security Constraints**
+- ❌ **All code runs client-side** - Visible to technical users in browser
+- ❌ **No server-side secrets** - Cannot securely store sensitive data
+- ❌ **Sandboxed environment** - Limited browser API access
+- ✅ **Our approach:** AES-256 encryption raises the bar significantly
+- ✅ **Enterprise alternative:** Power BI Row-Level Security (RLS) for true authentication
+
+#### **Functional Boundaries**
+- ❌ **Same-page filtering only** - Cross-filtering doesn't persist across pages
+- ❌ **No data persistence** - Can't save state between sessions
+- ❌ **No backend database** - Only works with Power BI-provided data
+- ❌ **Limited external API calls** - CORS and security restrictions
+
+#### **When to Use What**
+
+**Use Custom JavaScript Visuals (like ours) when:**
+- Need unique UI/navigation components
+- Require custom interactions and filtering
+- Want tight Power BI integration
+- Building public/partner dashboards with basic protection
+
+**Use Power BI RLS instead when:**
+- Need enterprise-grade security
+- Require user authentication (Azure AD)
+- Need compliance (GDPR/HIPAA)
+- Need cross-page filtering
+- Need audit trails and per-user access tracking
+
+### Architecture Overview
+
+```
+Power BI Custom Visual (TypeScript)
+├── Visual API 5.3.0
+│   ├── Data binding (capabilities.json)
+│   ├── Settings panel (formatting model)
+│   └── Cross-filtering (selection manager)
+│
+├── UI Layer
+│   ├── HTML/CSS (inline & modal modes)
+│   ├── Password dialog component
+│   └── Event handling
+│
+├── Business Logic
+│   ├── AES-256 encryption (CryptoJS)
+│   ├── Password validation
+│   ├── Organization filtering
+│   └── State management
+│
+└── Power BI Integration
+    ├── Dialog API (modal popups)
+    ├── Filter API (cross-visual filtering)
+    └── Bookmark API (navigation)
+```
+
+### For Technical Discussions
+
+**Key Points:**
+1. **Client-side architecture** - All logic runs in user's browser
+2. **Encryption approach** - AES-256 with password as key, significantly more secure than plaintext
+3. **Filtering mechanism** - Uses Power BI's native filtering API for cross-visual communication
+4. **Configuration model** - Encrypted JSON in settings (no rebuild needed for password updates)
+5. **Security positioning** - "Friendly barrier" for public dashboards, not enterprise authentication
+
+**Common Questions:**
+- *Can passwords be seen?* Yes, with technical expertise and browser dev tools (client-side limitation)
+- *Can this work across pages?* No, Power BI filtering is page-scoped
+- *Can we add user authentication?* Not in custom visuals - use Power BI RLS for that
+- *Can we track who accessed what?* No, use Power BI RLS with Azure AD for audit trails
+
+---
+
 ## References
 
 - [PowerBI Custom Visuals Docs](https://learn.microsoft.com/en-us/power-bi/developer/visuals/)
 - [PowerBI Row-Level Security](https://learn.microsoft.com/en-us/power-bi/admin/service-admin-rls)
+- [Power BI Visuals API](https://learn.microsoft.com/en-us/power-bi/developer/visuals/visual-api)
